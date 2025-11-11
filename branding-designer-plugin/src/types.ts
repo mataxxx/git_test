@@ -52,3 +52,10 @@ export type GenerationOptions = {
   count: number;
   patterns: TemplatePatternId[];
 };
+
+export type BrandingKnowledge = {
+  profile: BrandingProfile;
+  learnCount: number;
+  approvedTemplateIds: string[];
+  updatedAt: string;
+};

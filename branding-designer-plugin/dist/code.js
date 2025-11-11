@@ -10,7 +10,7 @@ var toHex = (color) => {
   return `#${[r, g, b].map((component) => component.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
 };
 var mixColor = (color, ratio) => {
-  var _a;
+  var _a2;
   return {
     type: "SOLID",
     color: {
@@ -18,7 +18,7 @@ var mixColor = (color, ratio) => {
       g: color.g + (1 - color.g) * ratio,
       b: color.b + (1 - color.b) * ratio
     },
-    opacity: (_a = color.a) != null ? _a : 1
+    opacity: (_a2 = color.a) != null ? _a2 : 1
   };
 };
 var darkenColor = (paint, ratio) => ({
@@ -31,6 +31,32 @@ var darkenColor = (paint, ratio) => ({
   opacity: paint.opacity
 });
 var average = (values) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+var unique = (values) => Array.from(new Set(values));
+var blendPaint = (a, b, weightA, weightB) => {
+  var _a2, _b;
+  if (weightA <= 0) {
+    return { ...b };
+  }
+  if (weightB <= 0) {
+    return { ...a };
+  }
+  const total = weightA + weightB;
+  return {
+    type: "SOLID",
+    color: {
+      r: (a.color.r * weightA + b.color.r * weightB) / total,
+      g: (a.color.g * weightA + b.color.g * weightB) / total,
+      b: (a.color.b * weightA + b.color.b * weightB) / total
+    },
+    opacity: (((_a2 = a.opacity) != null ? _a2 : 1) * weightA + ((_b = b.opacity) != null ? _b : 1) * weightB) / total
+  };
+};
+var clonePaint = (paint) => ({
+  type: "SOLID",
+  color: { ...paint.color },
+  opacity: paint.opacity
+});
+var shadowSignature = (shadow) => `${shadow.color.r.toFixed(2)}-${shadow.color.g.toFixed(2)}-${shadow.color.b.toFixed(2)}-${shadow.radius}-${shadow.offset.x}-${shadow.offset.y}-${shadow.spread}`;
 var traverseNodes = (nodes, callback) => {
   nodes.forEach((node) => {
     callback(node);
@@ -40,11 +66,11 @@ var traverseNodes = (nodes, callback) => {
   });
 };
 var extractSolidPaints = (node) => {
-  var _a, _b;
+  var _a2, _b;
   const paints = [];
   if ("fills" in node && Array.isArray(node.fills)) {
     for (const paint of node.fills) {
-      if (paint.type === "SOLID" && ((_a = paint.opacity) != null ? _a : 1) > 0) {
+      if (paint.type === "SOLID" && ((_a2 = paint.opacity) != null ? _a2 : 1) > 0) {
         paints.push(paint);
       }
     }
@@ -64,8 +90,219 @@ var scoreColor = (paint, usageWeight) => {
   return usageWeight * (0.4 + 0.6 * (1 - Math.abs(luminance - 0.5))) + saturation * 0.5;
 };
 var fontKey = (font) => `${font.family}__${font.style}`;
+var composeNarrative = (profile, context = {}) => {
+  var _a2, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
+  const selectionCount = (_a2 = context.selectionCount) != null ? _a2 : profile.metadata.sampleCount;
+  const paletteSize = (_b = context.paletteSize) != null ? _b : profile.colors.length;
+  const fontCount = (_c = context.fontCount) != null ? _c : profile.typography.all.length;
+  const shadowCount = (_d = context.shadowCount) != null ? _d : profile.shadows.length;
+  const primary = (_f = (_e = profile.colors.find((color) => color.role === "primary")) != null ? _e : profile.colors[0]) != null ? _f : null;
+  const secondary = (_g = profile.colors.find((color) => color.role === "secondary")) != null ? _g : null;
+  const accent = (_h = profile.colors.find((color) => color.role === "accent")) != null ? _h : null;
+  const highlights = [];
+  const improvementIdeas = [];
+  const toneDescriptors = /* @__PURE__ */ new Set();
+  if (primary) {
+    highlights.push(`Consistent primary hue detected around ${(_i = context.primaryHex) != null ? _i : primary.hex}.`);
+  } else {
+    improvementIdeas.push("Define a dependable primary color to anchor the system.");
+  }
+  if (secondary) {
+    highlights.push(`Secondary color ${(_j = context.secondaryHex) != null ? _j : secondary.hex} reinforces hierarchy.`);
+  }
+  if (accent) {
+    highlights.push(`Accent color ${(_k = context.accentHex) != null ? _k : accent.hex} adds energy to key moments.`);
+  } else if (paletteSize >= 2) {
+    improvementIdeas.push("Introduce an accent color to create focal points and calls to action.");
+  }
+  if (fontCount > 1) {
+    highlights.push("Multiple font pairings captured for headline and body rhythm.");
+  } else if (fontCount === 1) {
+    highlights.push(`Single font stack (${profile.typography.all[0].family}) keeps voice cohesive.`);
+  } else {
+    improvementIdeas.push("No fonts detected. Ensure text layers use available fonts or publish the file fonts.");
+  }
+  if (paletteSize >= 4) {
+    toneDescriptors.add("Vibrant");
+    highlights.push("Rich palette detected\u2014great for dynamic storytelling.");
+  } else if (paletteSize >= 2) {
+    toneDescriptors.add("Refined");
+  } else {
+    toneDescriptors.add("Minimal");
+    improvementIdeas.push("Add more differentiated fills/backgrounds to identify accent and neutral roles.");
+  }
+  const cornerAverage = profile.cornerRadius;
+  if (cornerAverage > 18) {
+    toneDescriptors.add("Soft-edged");
+    highlights.push("Soft, rounded shapes detected\u2014lean into pill buttons and generous cards.");
+  } else if (cornerAverage <= 8) {
+    toneDescriptors.add("Structured");
+    highlights.push("Sharp, modern corner system\u2014keep edges crisp for consistency.");
+  } else {
+    toneDescriptors.add("Balanced");
+  }
+  const strokeAverage = context.strokeSamples && context.strokeSamples.length ? average(context.strokeSamples) : profile.strokeWeight;
+  if (strokeAverage >= 3) {
+    highlights.push("Bold stroke presence suggests confident borders\u2014use for emphasis.");
+  } else if (strokeAverage <= 0.1) {
+    improvementIdeas.push("Strokes absent\u2014introduce keylines if the brand needs additional structure.");
+  }
+  if (shadowCount) {
+    toneDescriptors.add("Layered");
+    highlights.push(`Shadow system captured (${shadowCount}) for layered compositions.`);
+  } else {
+    toneDescriptors.add("Flat");
+    improvementIdeas.push("No shadows detected. Add subtle elevation if depth is part of the brand.");
+  }
+  if (selectionCount < 2) {
+    improvementIdeas.push("Provide 2\u20133 varied layouts to broaden the learned template vocabulary.");
+  }
+  const personality = paletteSize >= 3 && fontCount > 1 ? "Expressive modern system with balanced typography and color hierarchy." : paletteSize >= 2 ? "Minimal palette with focused storytelling elements." : "Foundation detected; add more branded elements for richer guidance.";
+  if (!highlights.length) {
+    highlights.push("Core layout tokens captured and ready for reuse.");
+  }
+  if (!improvementIdeas.length) {
+    improvementIdeas.push("Samples already cover a complete system\u2014ready to generate.");
+  }
+  return {
+    ...profile,
+    narrative: {
+      personality,
+      toneDescriptions: unique(Array.from(toneDescriptors))
+    },
+    insights: {
+      highlights: unique(highlights),
+      improvementIdeas: unique(improvementIdeas)
+    }
+  };
+};
+var mergeBrandingProfiles = (existing, incoming) => {
+  var _a2, _b, _c, _d, _e, _f, _g, _h, _i, _j;
+  if (!existing) {
+    return composeNarrative(incoming);
+  }
+  const weightExisting = Math.max(existing.metadata.sampleCount, 1);
+  const weightIncoming = Math.max(incoming.metadata.sampleCount, 1);
+  const colorMap = /* @__PURE__ */ new Map();
+  const addColors = (profile, weight) => {
+    profile.colors.forEach((swatch) => {
+      const entry = colorMap.get(swatch.hex);
+      if (entry) {
+        const combinedWeight = entry.weight + weight;
+        entry.paint = blendPaint(entry.paint, swatch.paint, entry.weight, weight);
+        entry.score = (entry.score * entry.weight + swatch.score * weight) / combinedWeight;
+        entry.weight = combinedWeight;
+      } else {
+        colorMap.set(swatch.hex, {
+          paint: clonePaint(swatch.paint),
+          score: swatch.score,
+          weight
+        });
+      }
+    });
+  };
+  addColors(existing, weightExisting);
+  addColors(incoming, weightIncoming);
+  let mergedColors = Array.from(colorMap.entries()).map(([hex, data]) => ({
+    hex,
+    paint: data.paint,
+    score: data.score,
+    weight: data.weight
+  })).sort((a, b) => b.score - a.score).slice(0, MAX_COLORS);
+  if (!mergedColors.length) {
+    mergedColors = incoming.colors.map((color) => ({
+      hex: color.hex,
+      paint: clonePaint(color.paint),
+      score: color.score,
+      weight: weightIncoming
+    }));
+  }
+  const mergedSwatches = mergedColors.map((swatch, index) => ({
+    hex: swatch.hex,
+    paint: swatch.paint,
+    score: swatch.score,
+    role: index === 0 ? "primary" : index === 1 ? "secondary" : index === 2 ? "accent" : "neutral"
+  }));
+  const fontMap = /* @__PURE__ */ new Map();
+  const addFonts = (profile, weight) => {
+    profile.typography.all.forEach((font) => {
+      const key = fontKey(font);
+      const entry = fontMap.get(key);
+      if (entry) {
+        entry.weight += weight;
+      } else {
+        fontMap.set(key, { font, weight });
+      }
+    });
+  };
+  addFonts(existing, weightExisting);
+  addFonts(incoming, weightIncoming);
+  const mergedFonts = Array.from(fontMap.values()).sort((a, b) => b.weight - a.weight);
+  const mergedPrimaryFont = (_d = (_c = (_b = (_a2 = mergedFonts[0]) == null ? void 0 : _a2.font) != null ? _b : incoming.typography.primary) != null ? _c : existing.typography.primary) != null ? _d : null;
+  const mergedSecondaryFont = (_j = (_i = (_h = (_g = (_e = mergedFonts[1]) == null ? void 0 : _e.font) != null ? _g : (_f = mergedFonts[0]) == null ? void 0 : _f.font) != null ? _h : incoming.typography.secondary) != null ? _i : existing.typography.secondary) != null ? _j : null;
+  const totalWeight = weightExisting + weightIncoming;
+  const mergedCornerRadius = (existing.cornerRadius * weightExisting + incoming.cornerRadius * weightIncoming) / totalWeight;
+  const mergedStrokeWeight = (existing.strokeWeight * weightExisting + incoming.strokeWeight * weightIncoming) / totalWeight;
+  const shadowMap = /* @__PURE__ */ new Map();
+  const addShadows = (profile) => {
+    profile.shadows.forEach((shadow) => {
+      const signature = shadowSignature(shadow);
+      if (!shadowMap.has(signature)) {
+        shadowMap.set(signature, { ...shadow });
+      }
+    });
+  };
+  addShadows(existing);
+  addShadows(incoming);
+  const mergedShadows = Array.from(shadowMap.values()).slice(0, 4);
+  const mergedBackground = blendPaint(
+    existing.surface.background,
+    incoming.surface.background,
+    weightExisting,
+    weightIncoming
+  );
+  const mergedElevated = blendPaint(
+    existing.surface.elevated,
+    incoming.surface.elevated,
+    weightExisting,
+    weightIncoming
+  );
+  const mergedMetadata = {
+    sampleCount: existing.metadata.sampleCount + incoming.metadata.sampleCount,
+    nodeIds: unique([...existing.metadata.nodeIds, ...incoming.metadata.nodeIds]).slice(-24)
+  };
+  const baseProfile = {
+    colors: mergedSwatches,
+    typography: {
+      primary: mergedPrimaryFont,
+      secondary: mergedSecondaryFont,
+      all: mergedFonts.map((entry) => entry.font)
+    },
+    cornerRadius: Math.min(32, Math.max(4, Math.round(mergedCornerRadius || 12))),
+    strokeWeight: Math.min(8, Math.max(0, mergedStrokeWeight || 2)),
+    shadows: mergedShadows,
+    surface: {
+      background: mergedBackground,
+      elevated: mergedElevated
+    },
+    narrative: {
+      personality: "",
+      toneDescriptions: []
+    },
+    insights: {
+      highlights: [],
+      improvementIdeas: []
+    },
+    metadata: mergedMetadata
+  };
+  return composeNarrative(baseProfile, {
+    paletteSize: baseProfile.colors.length,
+    fontCount: baseProfile.typography.all.length,
+    shadowCount: baseProfile.shadows.length
+  });
+};
 var analyzeSelection = (selection) => {
-  var _a, _b, _c, _d, _e, _f;
+  var _a2, _b, _c, _d, _e, _f, _g, _h, _i;
   if (!selection.length) {
     throw new Error("Select at least one frame or component to learn from.");
   }
@@ -76,10 +313,10 @@ var analyzeSelection = (selection) => {
   const shadows = [];
   const visitedShadowSignatures = /* @__PURE__ */ new Set();
   traverseNodes(selection, (node) => {
-    var _a2;
+    var _a3;
     const nodePaints = extractSolidPaints(node);
     for (const paint of nodePaints) {
-      const hex = toHex({ ...paint.color, a: (_a2 = paint.opacity) != null ? _a2 : 1 });
+      const hex = toHex({ ...paint.color, a: (_a3 = paint.opacity) != null ? _a3 : 1 });
       const entry = colorFrequency.get(hex);
       if (entry) {
         entry.count += 1;
@@ -104,9 +341,7 @@ var analyzeSelection = (selection) => {
     if ("effects" in node && Array.isArray(node.effects)) {
       for (const effect of node.effects) {
         if (effect.type === "DROP_SHADOW") {
-          const signature = `${effect.color.r.toFixed(2)}-${effect.color.g.toFixed(2)}-${effect.color.b.toFixed(
-            2
-          )}-${effect.radius}-${effect.offset.x}-${effect.offset.y}-${effect.spread}`;
+          const signature = shadowSignature(effect);
           if (!visitedShadowSignatures.has(signature)) {
             visitedShadowSignatures.add(signature);
             shadows.push(effect);
@@ -153,8 +388,8 @@ var analyzeSelection = (selection) => {
   })).sort((a, b) => b.score - a.score).slice(0, MAX_COLORS);
   const [primary, secondary, accent] = sortedColors;
   const neutral = sortedColors.find((color) => {
-    var _a2;
-    return color.score < ((_a2 = primary == null ? void 0 : primary.score) != null ? _a2 : 0) * 0.85;
+    var _a3;
+    return color.score < ((_a3 = primary == null ? void 0 : primary.score) != null ? _a3 : 0) * 0.85;
   });
   const colors = [];
   sortedColors.forEach((color, index) => {
@@ -178,7 +413,7 @@ var analyzeSelection = (selection) => {
     });
   }
   const fontEntries = Array.from(fontFrequency.values()).sort((a, b) => b.count - a.count);
-  const primaryFont = (_b = (_a = fontEntries[0]) == null ? void 0 : _a.font) != null ? _b : null;
+  const primaryFont = (_b = (_a2 = fontEntries[0]) == null ? void 0 : _a2.font) != null ? _b : null;
   const secondaryFont = (_d = (_c = fontEntries[1]) == null ? void 0 : _c.font) != null ? _d : null;
   const backgroundPaint = (_e = neutral == null ? void 0 : neutral.paint) != null ? _e : primary ? mixColor(primary.paint.color, 0.82) : {
     type: "SOLID",
@@ -188,7 +423,7 @@ var analyzeSelection = (selection) => {
     type: "SOLID",
     color: { r: 0.92, g: 0.93, b: 0.96 }
   };
-  return {
+  const baseProfile = {
     colors,
     typography: {
       primary: primaryFont,
@@ -202,11 +437,30 @@ var analyzeSelection = (selection) => {
       background: backgroundPaint,
       elevated: darkenColor(elevatedPaint, 0.05)
     },
+    narrative: {
+      personality: "",
+      toneDescriptions: []
+    },
+    insights: {
+      highlights: [],
+      improvementIdeas: []
+    },
     metadata: {
       sampleCount: selection.length,
       nodeIds: selection.map((node) => node.id)
     }
   };
+  return composeNarrative(baseProfile, {
+    selectionCount: selection.length,
+    paletteSize: sortedColors.length,
+    fontCount: fontEntries.length,
+    primaryHex: (_g = primary == null ? void 0 : primary.hex) != null ? _g : null,
+    secondaryHex: (_h = secondary == null ? void 0 : secondary.hex) != null ? _h : null,
+    accentHex: (_i = accent == null ? void 0 : accent.hex) != null ? _i : null,
+    cornerRadiusSamples: cornerRadii,
+    strokeSamples: strokeWeights,
+    shadowCount: shadows.length
+  });
 };
 
 // src/generator.ts
@@ -217,10 +471,10 @@ var TEMPLATE_DIMENSIONS = {
   email: { width: 800, height: 1200 }
 };
 var toFigmaPaint = (swatch) => {
-  var _a;
+  var _a2;
   return {
     ...swatch.paint,
-    opacity: (_a = swatch.paint.opacity) != null ? _a : 1
+    opacity: (_a2 = swatch.paint.opacity) != null ? _a2 : 1
   };
 };
 var ensureFonts = async (profile) => {
@@ -251,7 +505,7 @@ var ensureFonts = async (profile) => {
   );
 };
 var createText = (context, text, options) => {
-  var _a;
+  var _a2;
   const node = figma.createText();
   const font = options.fontName && options.fontName !== figma.mixed ? options.fontName : context.profile.typography.primary;
   if (font) {
@@ -277,7 +531,7 @@ var createText = (context, text, options) => {
   } else {
     node.fills = [
       toFigmaPaint(
-        (_a = context.profile.colors.find((color) => color.role === "primary")) != null ? _a : context.profile.colors[0]
+        (_a2 = context.profile.colors.find((color) => color.role === "primary")) != null ? _a2 : context.profile.colors[0]
       )
     ];
   }
@@ -296,7 +550,7 @@ var createText = (context, text, options) => {
   return node;
 };
 var createButton = (context, label) => {
-  var _a, _b, _c, _d;
+  var _a2, _b, _c, _d;
   const buttonFrame = figma.createFrame();
   buttonFrame.name = "CTA Button";
   buttonFrame.layoutMode = "HORIZONTAL";
@@ -312,7 +566,7 @@ var createButton = (context, label) => {
   buttonFrame.cornerRadius = context.profile.cornerRadius;
   buttonFrame.fills = [
     toFigmaPaint(
-      (_b = (_a = context.profile.colors.find((color) => color.role === "accent")) != null ? _a : context.profile.colors[1]) != null ? _b : context.profile.colors[0]
+      (_b = (_a2 = context.profile.colors.find((color) => color.role === "accent")) != null ? _a2 : context.profile.colors[1]) != null ? _b : context.profile.colors[0]
     )
   ];
   const text = createText(context, label, {
@@ -336,10 +590,10 @@ var applySurface = (frame, paint) => {
   frame.fills = [{ ...paint }];
 };
 var createImagePlaceholder = (context, options) => {
-  var _a, _b, _c;
+  var _a2, _b, _c;
   const rect = figma.createRectangle();
   rect.resizeWithoutConstraints(options.width, options.height);
-  rect.cornerRadius = (_a = options.cornerRadius) != null ? _a : context.profile.cornerRadius;
+  rect.cornerRadius = (_a2 = options.cornerRadius) != null ? _a2 : context.profile.cornerRadius;
   const accent = (_b = context.profile.colors.find((color) => color.role === "secondary")) != null ? _b : context.profile.colors[0];
   const overlay = (_c = context.profile.colors.find((color) => color.role === "accent")) != null ? _c : accent;
   rect.fills = [
@@ -372,7 +626,7 @@ var createImagePlaceholder = (context, options) => {
 };
 var templateFactories = {
   hero: async ({ frame, profile }) => {
-    var _a, _b, _c, _d, _e, _f;
+    var _a2, _b, _c, _d, _e, _f;
     frame.name = "Branded Hero";
     frame.layoutMode = "VERTICAL";
     frame.primaryAxisAlignItems = "CENTER";
@@ -392,7 +646,7 @@ var templateFactories = {
       {
         fontSize: 16,
         textAutoResize: "WIDTH_AND_HEIGHT",
-        fontName: (_b = (_a = profile.typography.secondary) != null ? _a : profile.typography.primary) != null ? _b : { family: "Inter", style: "Semi Bold" },
+        fontName: (_b = (_a2 = profile.typography.secondary) != null ? _a2 : profile.typography.primary) != null ? _b : { family: "Inter", style: "Semi Bold" },
         fills: [
           toFigmaPaint(
             (_c = profile.colors.find((color) => color.role === "accent")) != null ? _c : profile.colors[0]
@@ -484,7 +738,7 @@ var templateFactories = {
     frame.appendChild(contentFrame);
   },
   social: ({ frame, profile }) => {
-    var _a, _b, _c, _d, _e, _f, _g;
+    var _a2, _b, _c, _d, _e, _f, _g;
     frame.name = "Social Spotlight";
     frame.layoutMode = "VERTICAL";
     frame.primaryAxisSizingMode = "FIXED";
@@ -510,7 +764,7 @@ var templateFactories = {
     const label = createText({ frame, profile }, "Weekly Spotlight", {
       fontSize: 20,
       textAutoResize: "WIDTH_AND_HEIGHT",
-      fontName: (_b = (_a = profile.typography.secondary) != null ? _a : profile.typography.primary) != null ? _b : { family: "Inter", style: "Medium" }
+      fontName: (_b = (_a2 = profile.typography.secondary) != null ? _a2 : profile.typography.primary) != null ? _b : { family: "Inter", style: "Medium" }
     });
     const badge = createText({ frame, profile }, profile.metadata.sampleCount > 1 ? "Multi-layout DNA" : "Precision match", {
       fontSize: 12,
@@ -564,7 +818,7 @@ var templateFactories = {
     metrics.fills = [];
     metrics.strokes = [];
     const statCard = (value, descriptor) => {
-      var _a2, _b2, _c2, _d2;
+      var _a3, _b2, _c2, _d2;
       const card = figma.createFrame();
       card.layoutMode = "VERTICAL";
       card.primaryAxisSizingMode = "AUTO";
@@ -577,7 +831,7 @@ var templateFactories = {
       card.cornerRadius = profile.cornerRadius;
       card.fills = [
         toFigmaPaint(
-          (_a2 = profile.colors.find((color) => color.role === "secondary")) != null ? _a2 : profile.colors[0]
+          (_a3 = profile.colors.find((color) => color.role === "secondary")) != null ? _a3 : profile.colors[0]
         )
       ];
       card.effects = profile.shadows.slice(0, 1);
@@ -619,7 +873,7 @@ var templateFactories = {
     frame.appendChild(metrics);
   },
   announcement: ({ frame, profile }) => {
-    var _a, _b, _c;
+    var _a2, _b, _c;
     frame.name = "Launch Announcement";
     frame.layoutMode = "VERTICAL";
     frame.primaryAxisSizingMode = "FIXED";
@@ -636,7 +890,7 @@ var templateFactories = {
     const title = createText({ frame, profile }, "Ultra High Fidelity Kits", {
       fontSize: 52,
       textAutoResize: "WIDTH_AND_HEIGHT",
-      fontName: (_a = profile.typography.primary) != null ? _a : {
+      fontName: (_a2 = profile.typography.primary) != null ? _a2 : {
         family: "Inter",
         style: "Bold"
       }
@@ -667,7 +921,7 @@ var templateFactories = {
     points.itemSpacing = 12;
     points.fills = [];
     const bullet = (titleText, description) => {
-      var _a2, _b2, _c2, _d, _e, _f;
+      var _a3, _b2, _c2, _d, _e, _f;
       const row = figma.createFrame();
       row.layoutMode = "HORIZONTAL";
       row.primaryAxisSizingMode = "AUTO";
@@ -679,7 +933,7 @@ var templateFactories = {
       marker.resize(12, 12);
       marker.fills = [
         toFigmaPaint(
-          (_b2 = (_a2 = profile.colors.find((color) => color.role === "accent")) != null ? _a2 : profile.colors[1]) != null ? _b2 : profile.colors[0]
+          (_b2 = (_a3 = profile.colors.find((color) => color.role === "accent")) != null ? _a3 : profile.colors[1]) != null ? _b2 : profile.colors[0]
         )
       ];
       const column = figma.createFrame();
@@ -720,7 +974,7 @@ var templateFactories = {
     frame.appendChild(createButton({ frame, profile }, "Generate assets"));
   },
   email: ({ frame, profile }) => {
-    var _a, _b, _c, _d;
+    var _a2, _b, _c, _d;
     frame.name = "Email Narrative";
     frame.layoutMode = "VERTICAL";
     frame.primaryAxisSizingMode = "FIXED";
@@ -745,7 +999,7 @@ var templateFactories = {
     card.cornerRadius = profile.cornerRadius;
     card.fills = [
       toFigmaPaint(
-        (_a = profile.colors.find((color) => color.role === "secondary")) != null ? _a : profile.colors[0]
+        (_a2 = profile.colors.find((color) => color.role === "secondary")) != null ? _a2 : profile.colors[0]
       )
     ];
     card.effects = profile.shadows.slice(0, 1);
@@ -802,7 +1056,7 @@ var templateFactories = {
     grid.itemSpacing = 16;
     grid.fills = [];
     const column = (titleText, bodyText) => {
-      var _a2, _b2, _c2, _d2;
+      var _a3, _b2, _c2, _d2;
       const columnFrame = figma.createFrame();
       columnFrame.layoutMode = "VERTICAL";
       columnFrame.primaryAxisSizingMode = "AUTO";
@@ -812,7 +1066,7 @@ var templateFactories = {
       const columnTitle = createText({ frame, profile }, titleText, {
         fontSize: 18,
         textAutoResize: "WIDTH_AND_HEIGHT",
-        fontName: (_b2 = (_a2 = profile.typography.secondary) != null ? _a2 : profile.typography.primary) != null ? _b2 : {
+        fontName: (_b2 = (_a3 = profile.typography.secondary) != null ? _a3 : profile.typography.primary) != null ? _b2 : {
           family: "Inter",
           style: "Semi Bold"
         },
@@ -888,8 +1142,72 @@ var generateTemplates = async (profile, options) => {
 
 // src/main.ts
 var DEFAULT_PATTERNS = ["hero", "social", "announcement"];
+var KNOWLEDGE_STORAGE_KEY = "brand-style-designer:knowledge";
+var TEMPLATE_DATA_KEY = "brand-style-designer:template";
 figma.showUI(__html__, { width: 420, height: 640 });
-var currentProfile = null;
+var loadKnowledge = () => {
+  try {
+    const raw = figma.root.getPluginData(KNOWLEDGE_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    return {
+      ...parsed,
+      profile: mergeBrandingProfiles(null, parsed.profile)
+    };
+  } catch (e) {
+    return null;
+  }
+};
+var saveKnowledge = (data) => {
+  figma.root.setPluginData(KNOWLEDGE_STORAGE_KEY, JSON.stringify(data));
+};
+var readTemplateMetadata = (node) => {
+  try {
+    const raw = node.getPluginData(TEMPLATE_DATA_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) {
+    return {};
+  }
+};
+var writeTemplateMetadata = (node, payload) => {
+  node.setPluginData(TEMPLATE_DATA_KEY, JSON.stringify(payload));
+};
+var knowledge = loadKnowledge();
+var _a;
+var currentProfile = (_a = knowledge == null ? void 0 : knowledge.profile) != null ? _a : null;
+var broadcastProfile = (profile, source) => {
+  var _a2, _b;
+  figma.ui.postMessage({
+    type: "branding-profile",
+    data: profile,
+    meta: {
+      learnCount: (_a2 = knowledge == null ? void 0 : knowledge.learnCount) != null ? _a2 : 0,
+      approvedCount: (_b = knowledge == null ? void 0 : knowledge.approvedTemplateIds.length) != null ? _b : 0
+    },
+    source
+  });
+};
+var registerProfile = (profile, approvedNodeIds, source) => {
+  var _a2, _b;
+  const mergedProfile = knowledge ? mergeBrandingProfiles(knowledge.profile, profile) : profile;
+  const approvedSet = new Set((_a2 = knowledge == null ? void 0 : knowledge.approvedTemplateIds) != null ? _a2 : []);
+  approvedNodeIds.forEach((id) => approvedSet.add(id));
+  const updatedKnowledge = {
+    profile: mergedProfile,
+    learnCount: ((_b = knowledge == null ? void 0 : knowledge.learnCount) != null ? _b : 0) + 1,
+    approvedTemplateIds: Array.from(approvedSet),
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  knowledge = updatedKnowledge;
+  currentProfile = mergedProfile;
+  saveKnowledge(updatedKnowledge);
+  broadcastProfile(mergedProfile, source);
+};
+if (currentProfile) {
+  broadcastProfile(currentProfile, "memory");
+}
 var handleLearnBranding = () => {
   try {
     const selection = figma.currentPage.selection.filter(
@@ -898,11 +1216,8 @@ var handleLearnBranding = () => {
     if (!selection.length) {
       throw new Error("Please select at least one frame, component, or group to learn from.");
     }
-    currentProfile = learnBranding(selection);
-    figma.ui.postMessage({
-      type: "branding-profile",
-      data: currentProfile
-    });
+    const learnedProfile = learnBranding(selection);
+    registerProfile(learnedProfile, [], "learn");
     figma.notify("Brand style learned \u2728");
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to learn from the current selection.";
@@ -915,10 +1230,11 @@ var handleLearnBranding = () => {
 };
 var handleGenerateTemplates = async (options) => {
   if (!currentProfile) {
-    figma.notify("Learn the brand first to generate templates.");
+    const message = "Learn the brand first to generate templates.";
+    figma.notify(message);
     figma.ui.postMessage({
       type: "branding-error",
-      data: "Learn the brand first to generate templates."
+      data: message
     });
     return;
   }
@@ -926,13 +1242,58 @@ var handleGenerateTemplates = async (options) => {
   const count = Math.max(1, Math.min(8, options.count || 3));
   figma.ui.postMessage({ type: "generation-start" });
   try {
-    await generateTemplates(currentProfile, { count, patterns });
+    const frames = await generateTemplates(currentProfile, { count, patterns });
+    const timestamp = (/* @__PURE__ */ new Date()).toISOString();
+    frames.forEach((frame) => {
+      var _a2;
+      writeTemplateMetadata(frame, {
+        generatedAt: timestamp,
+        approvalStatus: "pending",
+        iteration: (_a2 = knowledge == null ? void 0 : knowledge.learnCount) != null ? _a2 : 0
+      });
+    });
     figma.ui.postMessage({ type: "generation-complete" });
     figma.notify(`Generated ${count} branded template${count > 1 ? "s" : ""}.`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to generate templates.";
     figma.ui.postMessage({
       type: "generation-error",
+      data: message
+    });
+    figma.notify(message, { timeout: 4e3 });
+  }
+};
+var handleApproveSelection = () => {
+  try {
+    const selection = figma.currentPage.selection.filter(
+      (node) => node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE" || node.type === "GROUP"
+    );
+    if (!selection.length) {
+      throw new Error("Select the branded templates you want to approve.");
+    }
+    const approvedProfile = learnBranding(selection);
+    registerProfile(
+      approvedProfile,
+      selection.map((node) => node.id),
+      "approval"
+    );
+    const timestamp = (/* @__PURE__ */ new Date()).toISOString();
+    selection.forEach((node) => {
+      if ("setPluginData" in node) {
+        const existing = readTemplateMetadata(node);
+        writeTemplateMetadata(node, {
+          ...existing,
+          approvalStatus: "approved",
+          approvedAt: timestamp
+        });
+      }
+    });
+    figma.ui.postMessage({ type: "approval-complete" });
+    figma.notify("Selection approved. Future templates will follow this direction.");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to approve the current selection.";
+    figma.ui.postMessage({
+      type: "approval-error",
       data: message
     });
     figma.notify(message, { timeout: 4e3 });
@@ -951,6 +1312,9 @@ figma.ui.onmessage = async (message) => {
       break;
     case "generate-templates":
       await handleGenerateTemplates(message.data);
+      break;
+    case "approve-selection":
+      handleApproveSelection();
       break;
     case "focus-patterns":
       if (message.data && Array.isArray(message.data)) {

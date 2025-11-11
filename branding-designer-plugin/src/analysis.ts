@@ -33,7 +33,38 @@ const darkenColor = (paint: SolidPaint, ratio: number): SolidPaint => ({
   opacity: paint.opacity
 });
 
-const average = (values: number[]) => (values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0);
+const average = (values: number[]) =>
+  values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+
+const unique = <T>(values: T[]) => Array.from(new Set(values));
+
+const blendPaint = (a: SolidPaint, b: SolidPaint, weightA: number, weightB: number): SolidPaint => {
+  if (weightA <= 0) {
+    return { ...b };
+  }
+  if (weightB <= 0) {
+    return { ...a };
+  }
+  const total = weightA + weightB;
+  return {
+    type: 'SOLID',
+    color: {
+      r: (a.color.r * weightA + b.color.r * weightB) / total,
+      g: (a.color.g * weightA + b.color.g * weightB) / total,
+      b: (a.color.b * weightA + b.color.b * weightB) / total
+    },
+    opacity: ((a.opacity ?? 1) * weightA + (b.opacity ?? 1) * weightB) / total
+  };
+};
+
+const clonePaint = (paint: SolidPaint): SolidPaint => ({
+  type: 'SOLID',
+  color: { ...paint.color },
+  opacity: paint.opacity
+});
+
+const shadowSignature = (shadow: DropShadowEffect) =>
+  `${shadow.color.r.toFixed(2)}-${shadow.color.g.toFixed(2)}-${shadow.color.b.toFixed(2)}-${shadow.radius}-${shadow.offset.x}-${shadow.offset.y}-${shadow.spread}`;
 
 export const traverseNodes = (nodes: readonly SceneNode[], callback: (node: SceneNode) => void) => {
   nodes.forEach((node) => {
@@ -71,6 +102,294 @@ const scoreColor = (paint: SolidPaint, usageWeight: number) => {
 };
 
 const fontKey = (font: FontDescriptor) => `${font.family}__${font.style}`;
+
+type NarrativeContext = {
+  selectionCount?: number;
+  paletteSize?: number;
+  fontCount?: number;
+  primaryHex?: string | null;
+  secondaryHex?: string | null;
+  accentHex?: string | null;
+  cornerRadiusSamples?: number[];
+  strokeSamples?: number[];
+  shadowCount?: number;
+};
+
+export const composeNarrative = (
+  profile: BrandingProfile,
+  context: NarrativeContext = {}
+): BrandingProfile => {
+  const selectionCount = context.selectionCount ?? profile.metadata.sampleCount;
+  const paletteSize = context.paletteSize ?? profile.colors.length;
+  const fontCount = context.fontCount ?? profile.typography.all.length;
+  const shadowCount = context.shadowCount ?? profile.shadows.length;
+
+  const primary =
+    profile.colors.find((color) => color.role === 'primary') ?? profile.colors[0] ?? null;
+  const secondary = profile.colors.find((color) => color.role === 'secondary') ?? null;
+  const accent = profile.colors.find((color) => color.role === 'accent') ?? null;
+
+  const highlights: string[] = [];
+  const improvementIdeas: string[] = [];
+  const toneDescriptors = new Set<string>();
+
+  if (primary) {
+    highlights.push(`Consistent primary hue detected around ${context.primaryHex ?? primary.hex}.`);
+  } else {
+    improvementIdeas.push('Define a dependable primary color to anchor the system.');
+  }
+
+  if (secondary) {
+    highlights.push(`Secondary color ${context.secondaryHex ?? secondary.hex} reinforces hierarchy.`);
+  }
+
+  if (accent) {
+    highlights.push(`Accent color ${context.accentHex ?? accent.hex} adds energy to key moments.`);
+  } else if (paletteSize >= 2) {
+    improvementIdeas.push('Introduce an accent color to create focal points and calls to action.');
+  }
+
+  if (fontCount > 1) {
+    highlights.push('Multiple font pairings captured for headline and body rhythm.');
+  } else if (fontCount === 1) {
+    highlights.push(`Single font stack (${profile.typography.all[0].family}) keeps voice cohesive.`);
+  } else {
+    improvementIdeas.push('No fonts detected. Ensure text layers use available fonts or publish the file fonts.');
+  }
+
+  if (paletteSize >= 4) {
+    toneDescriptors.add('Vibrant');
+    highlights.push('Rich palette detected—great for dynamic storytelling.');
+  } else if (paletteSize >= 2) {
+    toneDescriptors.add('Refined');
+  } else {
+    toneDescriptors.add('Minimal');
+    improvementIdeas.push('Add more differentiated fills/backgrounds to identify accent and neutral roles.');
+  }
+
+  const cornerAverage = profile.cornerRadius;
+  if (cornerAverage > 18) {
+    toneDescriptors.add('Soft-edged');
+    highlights.push('Soft, rounded shapes detected—lean into pill buttons and generous cards.');
+  } else if (cornerAverage <= 8) {
+    toneDescriptors.add('Structured');
+    highlights.push('Sharp, modern corner system—keep edges crisp for consistency.');
+  } else {
+    toneDescriptors.add('Balanced');
+  }
+
+  const strokeAverage =
+    context.strokeSamples && context.strokeSamples.length ? average(context.strokeSamples) : profile.strokeWeight;
+  if (strokeAverage >= 3) {
+    highlights.push('Bold stroke presence suggests confident borders—use for emphasis.');
+  } else if (strokeAverage <= 0.1) {
+    improvementIdeas.push('Strokes absent—introduce keylines if the brand needs additional structure.');
+  }
+
+  if (shadowCount) {
+    toneDescriptors.add('Layered');
+    highlights.push(`Shadow system captured (${shadowCount}) for layered compositions.`);
+  } else {
+    toneDescriptors.add('Flat');
+    improvementIdeas.push('No shadows detected. Add subtle elevation if depth is part of the brand.');
+  }
+
+  if (selectionCount < 2) {
+    improvementIdeas.push('Provide 2–3 varied layouts to broaden the learned template vocabulary.');
+  }
+
+  const personality =
+    paletteSize >= 3 && fontCount > 1
+      ? 'Expressive modern system with balanced typography and color hierarchy.'
+      : paletteSize >= 2
+      ? 'Minimal palette with focused storytelling elements.'
+      : 'Foundation detected; add more branded elements for richer guidance.';
+
+  if (!highlights.length) {
+    highlights.push('Core layout tokens captured and ready for reuse.');
+  }
+  if (!improvementIdeas.length) {
+    improvementIdeas.push('Samples already cover a complete system—ready to generate.');
+  }
+
+  return {
+    ...profile,
+    narrative: {
+      personality,
+      toneDescriptions: unique(Array.from(toneDescriptors))
+    },
+    insights: {
+      highlights: unique(highlights),
+      improvementIdeas: unique(improvementIdeas)
+    }
+  };
+};
+
+export const mergeBrandingProfiles = (
+  existing: BrandingProfile | null,
+  incoming: BrandingProfile
+): BrandingProfile => {
+  if (!existing) {
+    return composeNarrative(incoming);
+  }
+
+  const weightExisting = Math.max(existing.metadata.sampleCount, 1);
+  const weightIncoming = Math.max(incoming.metadata.sampleCount, 1);
+
+  const colorMap = new Map<
+    string,
+    {
+      paint: SolidPaint;
+      score: number;
+      weight: number;
+    }
+  >();
+
+  const addColors = (profile: BrandingProfile, weight: number) => {
+    profile.colors.forEach((swatch) => {
+      const entry = colorMap.get(swatch.hex);
+      if (entry) {
+        const combinedWeight = entry.weight + weight;
+        entry.paint = blendPaint(entry.paint, swatch.paint, entry.weight, weight);
+        entry.score = (entry.score * entry.weight + swatch.score * weight) / combinedWeight;
+        entry.weight = combinedWeight;
+      } else {
+        colorMap.set(swatch.hex, {
+          paint: clonePaint(swatch.paint),
+          score: swatch.score,
+          weight
+        });
+      }
+    });
+  };
+
+  addColors(existing, weightExisting);
+  addColors(incoming, weightIncoming);
+
+  let mergedColors = Array.from(colorMap.entries())
+    .map(([hex, data]) => ({
+      hex,
+      paint: data.paint,
+      score: data.score,
+      weight: data.weight
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_COLORS);
+
+  if (!mergedColors.length) {
+    mergedColors = incoming.colors.map((color) => ({
+      hex: color.hex,
+      paint: clonePaint(color.paint),
+      score: color.score,
+      weight: weightIncoming
+    }));
+  }
+
+  const mergedSwatches: ColorSwatch[] = mergedColors.map((swatch, index) => ({
+    hex: swatch.hex,
+    paint: swatch.paint,
+    score: swatch.score,
+    role: index === 0 ? 'primary' : index === 1 ? 'secondary' : index === 2 ? 'accent' : 'neutral'
+  }));
+
+  const fontMap = new Map<
+    string,
+    {
+      font: FontDescriptor;
+      weight: number;
+    }
+  >();
+
+  const addFonts = (profile: BrandingProfile, weight: number) => {
+    profile.typography.all.forEach((font) => {
+      const key = fontKey(font);
+      const entry = fontMap.get(key);
+      if (entry) {
+        entry.weight += weight;
+      } else {
+        fontMap.set(key, { font, weight });
+      }
+    });
+  };
+
+  addFonts(existing, weightExisting);
+  addFonts(incoming, weightIncoming);
+
+  const mergedFonts = Array.from(fontMap.values()).sort((a, b) => b.weight - a.weight);
+
+  const mergedPrimaryFont =
+    mergedFonts[0]?.font ?? incoming.typography.primary ?? existing.typography.primary ?? null;
+  const mergedSecondaryFont =
+    mergedFonts[1]?.font ?? mergedFonts[0]?.font ?? incoming.typography.secondary ?? existing.typography.secondary ?? null;
+
+  const totalWeight = weightExisting + weightIncoming;
+  const mergedCornerRadius =
+    (existing.cornerRadius * weightExisting + incoming.cornerRadius * weightIncoming) / totalWeight;
+  const mergedStrokeWeight =
+    (existing.strokeWeight * weightExisting + incoming.strokeWeight * weightIncoming) / totalWeight;
+
+  const shadowMap = new Map<string, DropShadowEffect>();
+  const addShadows = (profile: BrandingProfile) => {
+    profile.shadows.forEach((shadow) => {
+      const signature = shadowSignature(shadow);
+      if (!shadowMap.has(signature)) {
+        shadowMap.set(signature, { ...shadow });
+      }
+    });
+  };
+  addShadows(existing);
+  addShadows(incoming);
+  const mergedShadows = Array.from(shadowMap.values()).slice(0, 4);
+
+  const mergedBackground = blendPaint(
+    existing.surface.background,
+    incoming.surface.background,
+    weightExisting,
+    weightIncoming
+  );
+  const mergedElevated = blendPaint(
+    existing.surface.elevated,
+    incoming.surface.elevated,
+    weightExisting,
+    weightIncoming
+  );
+
+  const mergedMetadata = {
+    sampleCount: existing.metadata.sampleCount + incoming.metadata.sampleCount,
+    nodeIds: unique([...existing.metadata.nodeIds, ...incoming.metadata.nodeIds]).slice(-24)
+  };
+
+  const baseProfile: BrandingProfile = {
+    colors: mergedSwatches,
+    typography: {
+      primary: mergedPrimaryFont,
+      secondary: mergedSecondaryFont,
+      all: mergedFonts.map((entry) => entry.font)
+    },
+    cornerRadius: Math.min(32, Math.max(4, Math.round(mergedCornerRadius || 12))),
+    strokeWeight: Math.min(8, Math.max(0, mergedStrokeWeight || 2)),
+    shadows: mergedShadows,
+    surface: {
+      background: mergedBackground,
+      elevated: mergedElevated
+    },
+    narrative: {
+      personality: '',
+      toneDescriptions: []
+    },
+    insights: {
+      highlights: [],
+      improvementIdeas: []
+    },
+    metadata: mergedMetadata
+  };
+
+  return composeNarrative(baseProfile, {
+    paletteSize: baseProfile.colors.length,
+    fontCount: baseProfile.typography.all.length,
+    shadowCount: baseProfile.shadows.length
+  });
+};
 
 export const analyzeSelection = (selection: readonly SceneNode[]): BrandingProfile => {
   if (!selection.length) {
@@ -115,9 +434,7 @@ export const analyzeSelection = (selection: readonly SceneNode[]): BrandingProfi
     if ('effects' in node && Array.isArray(node.effects)) {
       for (const effect of node.effects) {
         if (effect.type === 'DROP_SHADOW') {
-          const signature = `${effect.color.r.toFixed(2)}-${effect.color.g.toFixed(2)}-${effect.color.b.toFixed(
-            2
-          )}-${effect.radius}-${effect.offset.x}-${effect.offset.y}-${effect.spread}`;
+          const signature = shadowSignature(effect);
           if (!visitedShadowSignatures.has(signature)) {
             visitedShadowSignatures.add(signature);
             shadows.push(effect);
@@ -219,68 +536,7 @@ export const analyzeSelection = (selection: readonly SceneNode[]): BrandingProfi
           color: { r: 0.92, g: 0.93, b: 0.96 }
         });
 
-  const highlights: string[] = [];
-  const improvementIdeas: string[] = [];
-
-  if (primary) {
-    highlights.push(`Consistent primary hue detected around ${primary.hex}.`);
-  }
-  if (secondary) {
-    highlights.push(`Secondary color ${secondary.hex} reinforces hierarchy.`);
-  }
-  if (accent) {
-    highlights.push(`Accent color ${accent.hex} adds energy to key moments.`);
-  }
-  if (fontEntries.length > 1) {
-    highlights.push('Multiple font pairings captured for headline and body rhythm.');
-  } else if (fontEntries.length === 1) {
-    highlights.push(`Single font stack (${fontEntries[0].font.family}) kept for cohesive voice.`);
-  } else {
-    improvementIdeas.push('No fonts detected. Ensure text layers use accessible fonts or publish the file fonts.');
-  }
-
-  if (colors.length < 3) {
-    improvementIdeas.push('Add more differentiated fills or backgrounds to help identify accent and neutral roles.');
-  }
-
-  if (cornerRadii.length && average(cornerRadii) > 20) {
-    highlights.push('Soft, rounded shapes detected—lean into pill buttons and generous cards.');
-  } else if (cornerRadii.length && average(cornerRadii) <= 8) {
-    highlights.push('Sharp, modern corner system—keep edges crisp for brand consistency.');
-  } else {
-    improvementIdeas.push('Corners vary widely; consider standardising radii for a tighter system.');
-  }
-
-  if (!shadows.length) {
-    improvementIdeas.push('No drop shadows found. Add subtle elevation styles if depth is part of the brand.');
-  } else {
-    highlights.push(`Shadow system captured (${shadows.length}) for layered compositions.`);
-  }
-
-  if (strokeWeights.length && average(strokeWeights) >= 3) {
-    highlights.push('Bold stroke presence suggests confident borders—use for emphasis.');
-  } else if (!strokeWeights.length) {
-    improvementIdeas.push('Strokes absent—introduce keylines if the brand needs additional structure.');
-  }
-
-  if (selection.length < 2) {
-    improvementIdeas.push('Provide 2–3 varied layouts to broaden the learned template vocabulary.');
-  }
-
-  const personality =
-    fontEntries.length && colors.length >= 3
-      ? 'Expressive modern system with balanced typography and color hierarchy.'
-      : colors.length > 1
-      ? 'Minimal palette with focused storytelling elements.'
-      : 'Foundation detected; add more branded elements for richer guidance.';
-
-  const toneDescriptions = [
-    average(cornerRadii) > 18 ? 'Soft-edged' : average(cornerRadii) < 8 ? 'Structured' : 'Balanced',
-    shadows.length ? 'Layered' : 'Flat',
-    colors.length >= 4 ? 'Vibrant' : colors.length >= 2 ? 'Refined' : 'Minimal'
-  ];
-
-  return {
+  const baseProfile: BrandingProfile = {
     colors,
     typography: {
       primary: primaryFont,
@@ -295,16 +551,28 @@ export const analyzeSelection = (selection: readonly SceneNode[]): BrandingProfi
       elevated: darkenColor(elevatedPaint, 0.05)
     },
     narrative: {
-      personality,
-      toneDescriptions: toneDescriptions.filter((value, index, array) => array.indexOf(value) === index)
+      personality: '',
+      toneDescriptions: []
     },
     insights: {
-      highlights,
-      improvementIdeas
+      highlights: [],
+      improvementIdeas: []
     },
     metadata: {
       sampleCount: selection.length,
       nodeIds: selection.map((node) => node.id)
     }
   };
+
+  return composeNarrative(baseProfile, {
+    selectionCount: selection.length,
+    paletteSize: sortedColors.length,
+    fontCount: fontEntries.length,
+    primaryHex: primary?.hex ?? null,
+    secondaryHex: secondary?.hex ?? null,
+    accentHex: accent?.hex ?? null,
+    cornerRadiusSamples: cornerRadii,
+    strokeSamples: strokeWeights,
+    shadowCount: shadows.length
+  });
 };

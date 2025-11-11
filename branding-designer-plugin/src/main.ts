@@ -1,16 +1,94 @@
 import { learnBranding, generateTemplates } from './generator';
-import { BrandingProfile, GenerationOptions, TemplatePatternId } from './types';
+import { mergeBrandingProfiles } from './analysis';
+import { BrandingKnowledge, BrandingProfile, GenerationOptions, TemplatePatternId } from './types';
 
 const DEFAULT_PATTERNS: TemplatePatternId[] = ['hero', 'social', 'announcement'];
+const KNOWLEDGE_STORAGE_KEY = 'brand-style-designer:knowledge';
+const TEMPLATE_DATA_KEY = 'brand-style-designer:template';
 
 figma.showUI(__html__, { width: 420, height: 640 });
 
-let currentProfile: BrandingProfile | null = null;
+const loadKnowledge = (): BrandingKnowledge | null => {
+  try {
+    const raw = figma.root.getPluginData(KNOWLEDGE_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as BrandingKnowledge;
+    return {
+      ...parsed,
+      profile: mergeBrandingProfiles(null, parsed.profile)
+    };
+  } catch {
+    return null;
+  }
+};
+
+const saveKnowledge = (data: BrandingKnowledge) => {
+  figma.root.setPluginData(KNOWLEDGE_STORAGE_KEY, JSON.stringify(data));
+};
+
+const readTemplateMetadata = (node: SceneNode) => {
+  try {
+    const raw = node.getPluginData(TEMPLATE_DATA_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+};
+
+const writeTemplateMetadata = (node: SceneNode, payload: Record<string, unknown>) => {
+  node.setPluginData(TEMPLATE_DATA_KEY, JSON.stringify(payload));
+};
+
+let knowledge: BrandingKnowledge | null = loadKnowledge();
+let currentProfile: BrandingProfile | null = knowledge?.profile ?? null;
+
+const broadcastProfile = (
+  profile: BrandingProfile,
+  source: 'memory' | 'learn' | 'approval'
+) => {
+  figma.ui.postMessage({
+    type: 'branding-profile',
+    data: profile,
+    meta: {
+      learnCount: knowledge?.learnCount ?? 0,
+      approvedCount: knowledge?.approvedTemplateIds.length ?? 0
+    },
+    source
+  });
+};
+
+const registerProfile = (
+  profile: BrandingProfile,
+  approvedNodeIds: string[],
+  source: 'learn' | 'approval'
+) => {
+  const mergedProfile = knowledge ? mergeBrandingProfiles(knowledge.profile, profile) : profile;
+  const approvedSet = new Set<string>(knowledge?.approvedTemplateIds ?? []);
+  approvedNodeIds.forEach((id) => approvedSet.add(id));
+
+  const updatedKnowledge: BrandingKnowledge = {
+    profile: mergedProfile,
+    learnCount: (knowledge?.learnCount ?? 0) + 1,
+    approvedTemplateIds: Array.from(approvedSet),
+    updatedAt: new Date().toISOString()
+  };
+
+  knowledge = updatedKnowledge;
+  currentProfile = mergedProfile;
+  saveKnowledge(updatedKnowledge);
+  broadcastProfile(mergedProfile, source);
+};
+
+if (currentProfile) {
+  broadcastProfile(currentProfile, 'memory');
+}
 
 const handleLearnBranding = () => {
   try {
     const selection = figma.currentPage.selection.filter(
-      (node) =>
+      (node): node is SceneNode =>
         node.type === 'FRAME' ||
         node.type === 'COMPONENT' ||
         node.type === 'INSTANCE' ||
@@ -21,11 +99,8 @@ const handleLearnBranding = () => {
       throw new Error('Please select at least one frame, component, or group to learn from.');
     }
 
-    currentProfile = learnBranding(selection);
-    figma.ui.postMessage({
-      type: 'branding-profile',
-      data: currentProfile
-    });
+    const learnedProfile = learnBranding(selection);
+    registerProfile(learnedProfile, [], 'learn');
     figma.notify('Brand style learned ✨');
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to learn from the current selection.';
@@ -39,10 +114,11 @@ const handleLearnBranding = () => {
 
 const handleGenerateTemplates = async (options: GenerationOptions) => {
   if (!currentProfile) {
-    figma.notify('Learn the brand first to generate templates.');
+    const message = 'Learn the brand first to generate templates.';
+    figma.notify(message);
     figma.ui.postMessage({
       type: 'branding-error',
-      data: 'Learn the brand first to generate templates.'
+      data: message
     });
     return;
   }
@@ -52,13 +128,66 @@ const handleGenerateTemplates = async (options: GenerationOptions) => {
 
   figma.ui.postMessage({ type: 'generation-start' });
   try {
-    await generateTemplates(currentProfile, { count, patterns });
+    const frames = await generateTemplates(currentProfile, { count, patterns });
+    const timestamp = new Date().toISOString();
+    frames.forEach((frame) => {
+      writeTemplateMetadata(frame, {
+        generatedAt: timestamp,
+        approvalStatus: 'pending',
+        iteration: knowledge?.learnCount ?? 0
+      });
+    });
     figma.ui.postMessage({ type: 'generation-complete' });
     figma.notify(`Generated ${count} branded template${count > 1 ? 's' : ''}.`);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to generate templates.';
     figma.ui.postMessage({
       type: 'generation-error',
+      data: message
+    });
+    figma.notify(message, { timeout: 4000 });
+  }
+};
+
+const handleApproveSelection = () => {
+  try {
+    const selection = figma.currentPage.selection.filter(
+      (node): node is SceneNode =>
+        node.type === 'FRAME' ||
+        node.type === 'COMPONENT' ||
+        node.type === 'INSTANCE' ||
+        node.type === 'GROUP'
+    );
+
+    if (!selection.length) {
+      throw new Error('Select the branded templates you want to approve.');
+    }
+
+    const approvedProfile = learnBranding(selection);
+    registerProfile(
+      approvedProfile,
+      selection.map((node) => node.id),
+      'approval'
+    );
+
+    const timestamp = new Date().toISOString();
+    selection.forEach((node) => {
+      if ('setPluginData' in node) {
+        const existing = readTemplateMetadata(node);
+        writeTemplateMetadata(node, {
+          ...existing,
+          approvalStatus: 'approved',
+          approvedAt: timestamp
+        });
+      }
+    });
+
+    figma.ui.postMessage({ type: 'approval-complete' });
+    figma.notify('Selection approved. Future templates will follow this direction.');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to approve the current selection.';
+    figma.ui.postMessage({
+      type: 'approval-error',
       data: message
     });
     figma.notify(message, { timeout: 4000 });
@@ -79,6 +208,9 @@ figma.ui.onmessage = async (message) => {
       break;
     case 'generate-templates':
       await handleGenerateTemplates(message.data as GenerationOptions);
+      break;
+    case 'approve-selection':
+      handleApproveSelection();
       break;
     case 'focus-patterns':
       if (message.data && Array.isArray(message.data)) {

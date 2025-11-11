@@ -45,13 +45,27 @@ type BrandingProfile = {
   };
 };
 
+type KnowledgeMeta = {
+  learnCount: number;
+  approvedCount: number;
+};
+
+type BrandingProfileMessage = {
+  type: 'branding-profile';
+  data: BrandingProfile;
+  meta: KnowledgeMeta;
+  source?: 'memory' | 'learn' | 'approval';
+};
+
 type PluginMessage =
-  | { type: 'branding-profile'; data: BrandingProfile }
+  | BrandingProfileMessage
   | { type: 'branding-error'; data: string }
   | { type: 'generation-start' }
   | { type: 'generation-complete' }
   | { type: 'generation-error'; data: string }
-  | { type: 'selection-change'; data: number };
+  | { type: 'selection-change'; data: number }
+  | { type: 'approval-complete' }
+  | { type: 'approval-error'; data: string };
 
 const patterns: { id: TemplatePatternId; name: string; description: string }[] = [
   {
@@ -82,9 +96,13 @@ const statusElement = document.getElementById('status') as HTMLElement;
 const brandSummary = document.getElementById('brandSummary') as HTMLElement;
 const countInput = document.getElementById('countInput') as HTMLInputElement;
 const patternToggleGroup = document.getElementById('patternToggleGroup') as HTMLElement;
+const approveButton = document.getElementById('approveButton') as HTMLButtonElement | null;
+const approvalStatus = document.getElementById('approvalStatus') as HTMLElement | null;
 
 let isGenerating = false;
 let currentProfile: BrandingProfile | null = null;
+let knowledgeMeta: KnowledgeMeta = { learnCount: 0, approvedCount: 0 };
+let selectionCount = 0;
 const selectedPatterns = new Set<TemplatePatternId>(['hero', 'social', 'announcement']);
 
 const sendMessage = (payload: Record<string, unknown>) => {
@@ -94,6 +112,9 @@ const sendMessage = (payload: Record<string, unknown>) => {
 const updateButtons = () => {
   learnButton.disabled = isGenerating;
   generateButton.disabled = isGenerating || !currentProfile;
+  if (approveButton) {
+    approveButton.disabled = isGenerating || !currentProfile || selectionCount === 0;
+  }
 };
 
 const setStatus = (message: string, tone: 'default' | 'success' | 'warning' = 'default') => {
@@ -102,7 +123,7 @@ const setStatus = (message: string, tone: 'default' | 'success' | 'warning' = 'd
   statusElement.textContent = message;
 };
 
-const renderBrandSummary = (profile: BrandingProfile) => {
+const renderBrandSummary = (profile: BrandingProfile, meta: KnowledgeMeta) => {
   const primary = profile.typography.primary;
   const secondary = profile.typography.secondary;
   const uniqueFonts = profile.typography.all.slice(0, 4);
@@ -135,6 +156,10 @@ const renderBrandSummary = (profile: BrandingProfile) => {
       <div class="status" style="background:rgba(37,99,235,0.06);color:#1D4ED8;">
         ${profile.narrative.personality}
       </div>
+    <div style="display:flex;gap:12px;font-size:10px;color:#6B7280;flex-wrap:wrap;">
+      <span>Learning passes: <strong>${meta.learnCount}</strong></span>
+      <span>Approved templates: <strong>${meta.approvedCount}</strong></span>
+    </div>
     <div>
       <h3 style="margin:12px 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#6B7280;">Palette</h3>
       <div class="palette-grid">${colorSwatches}</div>
@@ -246,6 +271,19 @@ generateButton.addEventListener('click', () => {
   });
 });
 
+if (approveButton) {
+  approveButton.addEventListener('click', () => {
+    if (approveButton.disabled) {
+      return;
+    }
+    if (approvalStatus) {
+      approvalStatus.className = 'status';
+      approvalStatus.textContent = 'Reinforcing brand with approved selection…';
+    }
+    sendMessage({ type: 'approve-selection' });
+  });
+}
+
 window.onmessage = (event: MessageEvent<{ pluginMessage?: PluginMessage }>) => {
   const message = event.data.pluginMessage;
   if (!message) {
@@ -255,11 +293,27 @@ window.onmessage = (event: MessageEvent<{ pluginMessage?: PluginMessage }>) => {
   switch (message.type) {
     case 'branding-profile':
       currentProfile = message.data;
+      knowledgeMeta = message.meta;
       isGenerating = false;
-      renderBrandSummary(message.data);
-      setStatus('Brand DNA captured. Ready to generate.', 'success');
+      renderBrandSummary(message.data, knowledgeMeta);
       generateButton.textContent = 'Generate branded templates';
       updateButtons();
+      if (message.source === 'memory') {
+        setStatus('Brand DNA restored from previous sessions. Ready to generate.', 'success');
+      } else if (message.source === 'approval') {
+        setStatus('Brand DNA reinforced with your approved templates.', 'success');
+        if (approvalStatus) {
+          approvalStatus.className = 'status success';
+          approvalStatus.textContent = 'Selection approved. The plugin will favour this style going forward.';
+        }
+      } else {
+        setStatus('Brand DNA captured. Ready to generate.', 'success');
+        if (approvalStatus && selectionCount === 0) {
+          approvalStatus.className = 'status';
+          approvalStatus.textContent = 'Select generated frames you trust, then click approve to keep training.';
+        }
+      }
+      generateButton.textContent = 'Generate branded templates';
       break;
     case 'branding-error':
       currentProfile = null;
@@ -267,18 +321,30 @@ window.onmessage = (event: MessageEvent<{ pluginMessage?: PluginMessage }>) => {
       brandSummary.innerHTML = '<p class="status warning">We could not learn from the selection. Try selecting branded frames.</p>';
       setStatus(message.data, 'warning');
       generateButton.textContent = 'Generate branded templates';
+      if (approvalStatus) {
+        approvalStatus.className = 'status warning';
+        approvalStatus.textContent = 'Learn the brand before approving templates.';
+      }
       updateButtons();
       break;
     case 'generation-start':
       isGenerating = true;
       updateButtons();
       generateButton.textContent = 'Generating…';
+      if (approvalStatus) {
+        approvalStatus.className = 'status';
+        approvalStatus.textContent = 'Generating layouts… select your favourites once they appear.';
+      }
       break;
     case 'generation-complete':
       isGenerating = false;
       generateButton.textContent = 'Generate branded templates';
       updateButtons();
       setStatus('Templates created. Check your canvas!', 'success');
+      if (approvalStatus) {
+        approvalStatus.className = 'status';
+        approvalStatus.textContent = 'Select the new frames you like and click approve to reinforce the style.';
+      }
       break;
     case 'generation-error':
       isGenerating = false;
@@ -287,14 +353,38 @@ window.onmessage = (event: MessageEvent<{ pluginMessage?: PluginMessage }>) => {
       setStatus(message.data, 'warning');
       break;
     case 'selection-change':
+      selectionCount = message.data;
       if (!currentProfile) {
-        const count = message.data;
-        if (count > 0) {
-          setStatus(`Selection ready · ${count} node${count > 1 ? 's' : ''} selected.`, 'default');
+        if (selectionCount > 0) {
+          setStatus(`Selection ready · ${selectionCount} node${selectionCount > 1 ? 's' : ''} selected.`, 'default');
         } else {
           setStatus('Select 1–5 frames that reflect the brand, then click learn.', 'warning');
         }
+      } else if (approvalStatus) {
+        if (selectionCount > 0) {
+          approvalStatus.className = 'status';
+          approvalStatus.textContent = `Selection ready · ${selectionCount} node${selectionCount > 1 ? 's' : ''} selected. Approve to reinforce the brand.`;
+        } else {
+          approvalStatus.className = 'status';
+          approvalStatus.textContent = 'Select the frames you trust, then click approve to keep learning.';
+        }
       }
+      updateButtons();
+      break;
+    case 'approval-complete':
+      selectionCount = 0;
+      updateButtons();
+      if (approvalStatus) {
+        approvalStatus.className = 'status success';
+        approvalStatus.textContent = 'Thanks! Approved selection added to the brand memory.';
+      }
+      break;
+    case 'approval-error':
+      if (approvalStatus) {
+        approvalStatus.className = 'status warning';
+        approvalStatus.textContent = message.data;
+      }
+      updateButtons();
       break;
     default:
       break;

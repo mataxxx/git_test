@@ -7,6 +7,7 @@ Brand Style Designer learns a brand’s visual language from a handful of refere
 - Surfaces a readable “brand DNA” summary directly in the plugin UI.
 - Generates polished auto-layout templates (Hero, Social Spotlight, Launch Announcement, Email Narrative) that reuse learned tokens.
 - Applies fallback heuristics when fonts or colors are missing so results are always usable.
+- Keeps improving every time you approve generated layouts, blending new insights into the brand profile.
 
 ## Getting Started
 
@@ -42,6 +43,7 @@ The plugin should now appear under *Plugins → Development* as **Brand Style De
    - An “Opportunities” section with improvement suggestions (helps designers iterate)
 4. **Choose layout families** – Toggle Hero, Social, Announcement, Email patterns and set the number of templates (1–6).
 5. **Generate** – Press **Generate branded templates**. Frames drop near your viewport, pre-wired with auto layout, buttons, and placeholders ready for real copy and imagery.
+6. **Approve & refine** – Select the generated frames that nail the brief and hit **Approve selection** to reinforce the brand memory for future runs.
 
 While editing the generated frames, keep the plugin open—the insights panel functions like a creative director, guiding refinements and reminding you where the brand is strongest or needs more definition.
 
@@ -72,6 +74,7 @@ Brand Style Designer now surfaces:
 - **Narrative personality**: quick read on the overall vibe (e.g. “Expressive modern system”).
 - **Tone cues**: descriptors such as “Layered, Vibrant, Soft-edged” to keep designs aligned.
 - **Highlights & Opportunities**: short-form feedback that celebrates strengths and points to next refinements—mirroring how a senior designer might critique the system before hand-off.
+- **Live refinement loop**: approve any generated frame that you love; the plugin folds those proportions, palettes, and type scales back into the brand profile to sharpen the next batch.
 
 Use these notes to fine-tune reference frames, expand the sample set, or brief collaborators on how to keep assets looking unmistakably on-brand. When you add a new reference frame and re-run “Learn”, the insight panel updates instantly, giving continuous feedback through the creative process.
 
