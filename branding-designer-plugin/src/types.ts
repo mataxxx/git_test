@@ -32,6 +32,14 @@ export type BrandingProfile = {
     background: SolidPaint;
     elevated: SolidPaint;
   };
+  narrative: {
+    personality: string;
+    toneDescriptions: string[];
+  };
+  insights: {
+    highlights: string[];
+    improvementIdeas: string[];
+  };
   metadata: {
     sampleCount: number;
     nodeIds: string[];

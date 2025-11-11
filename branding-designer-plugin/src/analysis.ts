@@ -219,6 +219,67 @@ export const analyzeSelection = (selection: readonly SceneNode[]): BrandingProfi
           color: { r: 0.92, g: 0.93, b: 0.96 }
         });
 
+  const highlights: string[] = [];
+  const improvementIdeas: string[] = [];
+
+  if (primary) {
+    highlights.push(`Consistent primary hue detected around ${primary.hex}.`);
+  }
+  if (secondary) {
+    highlights.push(`Secondary color ${secondary.hex} reinforces hierarchy.`);
+  }
+  if (accent) {
+    highlights.push(`Accent color ${accent.hex} adds energy to key moments.`);
+  }
+  if (fontEntries.length > 1) {
+    highlights.push('Multiple font pairings captured for headline and body rhythm.');
+  } else if (fontEntries.length === 1) {
+    highlights.push(`Single font stack (${fontEntries[0].font.family}) kept for cohesive voice.`);
+  } else {
+    improvementIdeas.push('No fonts detected. Ensure text layers use accessible fonts or publish the file fonts.');
+  }
+
+  if (colors.length < 3) {
+    improvementIdeas.push('Add more differentiated fills or backgrounds to help identify accent and neutral roles.');
+  }
+
+  if (cornerRadii.length && average(cornerRadii) > 20) {
+    highlights.push('Soft, rounded shapes detected—lean into pill buttons and generous cards.');
+  } else if (cornerRadii.length && average(cornerRadii) <= 8) {
+    highlights.push('Sharp, modern corner system—keep edges crisp for brand consistency.');
+  } else {
+    improvementIdeas.push('Corners vary widely; consider standardising radii for a tighter system.');
+  }
+
+  if (!shadows.length) {
+    improvementIdeas.push('No drop shadows found. Add subtle elevation styles if depth is part of the brand.');
+  } else {
+    highlights.push(`Shadow system captured (${shadows.length}) for layered compositions.`);
+  }
+
+  if (strokeWeights.length && average(strokeWeights) >= 3) {
+    highlights.push('Bold stroke presence suggests confident borders—use for emphasis.');
+  } else if (!strokeWeights.length) {
+    improvementIdeas.push('Strokes absent—introduce keylines if the brand needs additional structure.');
+  }
+
+  if (selection.length < 2) {
+    improvementIdeas.push('Provide 2–3 varied layouts to broaden the learned template vocabulary.');
+  }
+
+  const personality =
+    fontEntries.length && colors.length >= 3
+      ? 'Expressive modern system with balanced typography and color hierarchy.'
+      : colors.length > 1
+      ? 'Minimal palette with focused storytelling elements.'
+      : 'Foundation detected; add more branded elements for richer guidance.';
+
+  const toneDescriptions = [
+    average(cornerRadii) > 18 ? 'Soft-edged' : average(cornerRadii) < 8 ? 'Structured' : 'Balanced',
+    shadows.length ? 'Layered' : 'Flat',
+    colors.length >= 4 ? 'Vibrant' : colors.length >= 2 ? 'Refined' : 'Minimal'
+  ];
+
   return {
     colors,
     typography: {
@@ -232,6 +293,14 @@ export const analyzeSelection = (selection: readonly SceneNode[]): BrandingProfi
     surface: {
       background: backgroundPaint,
       elevated: darkenColor(elevatedPaint, 0.05)
+    },
+    narrative: {
+      personality,
+      toneDescriptions: toneDescriptions.filter((value, index, array) => array.indexOf(value) === index)
+    },
+    insights: {
+      highlights,
+      improvementIdeas
     },
     metadata: {
       sampleCount: selection.length,

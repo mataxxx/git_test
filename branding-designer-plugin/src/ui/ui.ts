@@ -31,6 +31,14 @@ type BrandingProfile = {
     background: SolidPaint;
     elevated: SolidPaint;
   };
+  narrative: {
+    personality: string;
+    toneDescriptions: string[];
+  };
+  insights: {
+    highlights: string[];
+    improvementIdeas: string[];
+  };
   metadata: {
     sampleCount: number;
     nodeIds: string[];
@@ -124,6 +132,9 @@ const renderBrandSummary = (profile: BrandingProfile) => {
     <div class="status success">
       Learned from ${profile.metadata.sampleCount} sample${profile.metadata.sampleCount > 1 ? 's' : ''}.
     </div>
+      <div class="status" style="background:rgba(37,99,235,0.06);color:#1D4ED8;">
+        ${profile.narrative.personality}
+      </div>
     <div>
       <h3 style="margin:12px 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#6B7280;">Palette</h3>
       <div class="palette-grid">${colorSwatches}</div>
@@ -142,8 +153,21 @@ const renderBrandSummary = (profile: BrandingProfile) => {
         <li>Corner radius ~ <strong>${profile.cornerRadius}px</strong></li>
         <li>Stroke weight ~ <strong>${profile.strokeWeight}px</strong></li>
         <li>Shadow styles captured: <strong>${profile.shadows.length}</strong></li>
+          <li>Tone cues: <strong>${profile.narrative.toneDescriptions.join(', ')}</strong></li>
       </ul>
     </div>
+      <div>
+        <h3 style="margin:12px 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#6B7280;">Highlights</h3>
+        <ul style="margin:0;padding-left:18px;font-size:11px;color:#047857;display:flex;flex-direction:column;gap:6px;">
+          ${profile.insights.highlights.length ? profile.insights.highlights.map((item) => `<li>${item}</li>`).join('') : '<li>Provide more branded elements to surface strengths.</li>'}
+        </ul>
+      </div>
+      <div>
+        <h3 style="margin:12px 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#6B7280;">Opportunities</h3>
+        <ul style="margin:0;padding-left:18px;font-size:11px;color:#B45309;display:flex;flex-direction:column;gap:6px;">
+          ${profile.insights.improvementIdeas.length ? profile.insights.improvementIdeas.map((item) => `<li>${item}</li>`).join('') : '<li>Samples already cover a complete system—ready to generate.</li>'}
+        </ul>
+      </div>
   `;
 
   brandSummary.innerHTML = tokens;
