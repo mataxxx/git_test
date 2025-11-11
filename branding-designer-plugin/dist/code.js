@@ -1,1331 +1,1259 @@
 "use strict";
 
-// src/analysis.ts
-var MAX_COLORS = 8;
-var toHex = (color) => {
-  const clamp = (value) => Math.max(0, Math.min(255, Math.round(value * 255)));
-  const r = clamp(color.r);
-  const g = clamp(color.g);
-  const b = clamp(color.b);
-  return `#${[r, g, b].map((component) => component.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
+// src/core/fonts.ts
+var STYLE_MAP = {
+  100: "Thin",
+  200: "Extra Light",
+  300: "Light",
+  400: "Regular",
+  500: "Medium",
+  600: "Semi Bold",
+  700: "Bold",
+  800: "Extra Bold",
+  900: "Black"
 };
-var mixColor = (color, ratio) => {
-  var _a2;
-  return {
-    type: "SOLID",
-    color: {
-      r: color.r + (1 - color.r) * ratio,
-      g: color.g + (1 - color.g) * ratio,
-      b: color.b + (1 - color.b) * ratio
-    },
-    opacity: (_a2 = color.a) != null ? _a2 : 1
-  };
-};
-var darkenColor = (paint, ratio) => ({
-  type: "SOLID",
-  color: {
-    r: paint.color.r * (1 - ratio),
-    g: paint.color.g * (1 - ratio),
-    b: paint.color.b * (1 - ratio)
-  },
-  opacity: paint.opacity
-});
-var average = (values) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
-var unique = (values) => Array.from(new Set(values));
-var blendPaint = (a, b, weightA, weightB) => {
-  var _a2, _b;
-  if (weightA <= 0) {
-    return { ...b };
-  }
-  if (weightB <= 0) {
-    return { ...a };
-  }
-  const total = weightA + weightB;
-  return {
-    type: "SOLID",
-    color: {
-      r: (a.color.r * weightA + b.color.r * weightB) / total,
-      g: (a.color.g * weightA + b.color.g * weightB) / total,
-      b: (a.color.b * weightA + b.color.b * weightB) / total
-    },
-    opacity: (((_a2 = a.opacity) != null ? _a2 : 1) * weightA + ((_b = b.opacity) != null ? _b : 1) * weightB) / total
-  };
-};
-var clonePaint = (paint) => ({
-  type: "SOLID",
-  color: { ...paint.color },
-  opacity: paint.opacity
-});
-var shadowSignature = (shadow) => `${shadow.color.r.toFixed(2)}-${shadow.color.g.toFixed(2)}-${shadow.color.b.toFixed(2)}-${shadow.radius}-${shadow.offset.x}-${shadow.offset.y}-${shadow.spread}`;
-var traverseNodes = (nodes, callback) => {
-  nodes.forEach((node) => {
-    callback(node);
-    if ("children" in node) {
-      traverseNodes(node.children, callback);
-    }
-  });
-};
-var extractSolidPaints = (node) => {
-  var _a2, _b;
-  const paints = [];
-  if ("fills" in node && Array.isArray(node.fills)) {
-    for (const paint of node.fills) {
-      if (paint.type === "SOLID" && ((_a2 = paint.opacity) != null ? _a2 : 1) > 0) {
-        paints.push(paint);
-      }
-    }
-  }
-  if ("backgrounds" in node && Array.isArray(node.backgrounds)) {
-    for (const paint of node.backgrounds) {
-      if (paint.type === "SOLID" && ((_b = paint.opacity) != null ? _b : 1) > 0) {
-        paints.push(paint);
-      }
-    }
-  }
-  return paints;
-};
-var scoreColor = (paint, usageWeight) => {
-  const luminance = 0.2126 * paint.color.r + 0.7152 * paint.color.g + 0.0722 * paint.color.b;
-  const saturation = Math.max(paint.color.r, paint.color.g, paint.color.b) - Math.min(paint.color.r, paint.color.g, paint.color.b);
-  return usageWeight * (0.4 + 0.6 * (1 - Math.abs(luminance - 0.5))) + saturation * 0.5;
-};
-var fontKey = (font) => `${font.family}__${font.style}`;
-var composeNarrative = (profile, context = {}) => {
-  var _a2, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
-  const selectionCount = (_a2 = context.selectionCount) != null ? _a2 : profile.metadata.sampleCount;
-  const paletteSize = (_b = context.paletteSize) != null ? _b : profile.colors.length;
-  const fontCount = (_c = context.fontCount) != null ? _c : profile.typography.all.length;
-  const shadowCount = (_d = context.shadowCount) != null ? _d : profile.shadows.length;
-  const primary = (_f = (_e = profile.colors.find((color) => color.role === "primary")) != null ? _e : profile.colors[0]) != null ? _f : null;
-  const secondary = (_g = profile.colors.find((color) => color.role === "secondary")) != null ? _g : null;
-  const accent = (_h = profile.colors.find((color) => color.role === "accent")) != null ? _h : null;
-  const highlights = [];
-  const improvementIdeas = [];
-  const toneDescriptors = /* @__PURE__ */ new Set();
-  if (primary) {
-    highlights.push(`Consistent primary hue detected around ${(_i = context.primaryHex) != null ? _i : primary.hex}.`);
-  } else {
-    improvementIdeas.push("Define a dependable primary color to anchor the system.");
-  }
-  if (secondary) {
-    highlights.push(`Secondary color ${(_j = context.secondaryHex) != null ? _j : secondary.hex} reinforces hierarchy.`);
-  }
-  if (accent) {
-    highlights.push(`Accent color ${(_k = context.accentHex) != null ? _k : accent.hex} adds energy to key moments.`);
-  } else if (paletteSize >= 2) {
-    improvementIdeas.push("Introduce an accent color to create focal points and calls to action.");
-  }
-  if (fontCount > 1) {
-    highlights.push("Multiple font pairings captured for headline and body rhythm.");
-  } else if (fontCount === 1) {
-    highlights.push(`Single font stack (${profile.typography.all[0].family}) keeps voice cohesive.`);
-  } else {
-    improvementIdeas.push("No fonts detected. Ensure text layers use available fonts or publish the file fonts.");
-  }
-  if (paletteSize >= 4) {
-    toneDescriptors.add("Vibrant");
-    highlights.push("Rich palette detected\u2014great for dynamic storytelling.");
-  } else if (paletteSize >= 2) {
-    toneDescriptors.add("Refined");
-  } else {
-    toneDescriptors.add("Minimal");
-    improvementIdeas.push("Add more differentiated fills/backgrounds to identify accent and neutral roles.");
-  }
-  const cornerAverage = profile.cornerRadius;
-  if (cornerAverage > 18) {
-    toneDescriptors.add("Soft-edged");
-    highlights.push("Soft, rounded shapes detected\u2014lean into pill buttons and generous cards.");
-  } else if (cornerAverage <= 8) {
-    toneDescriptors.add("Structured");
-    highlights.push("Sharp, modern corner system\u2014keep edges crisp for consistency.");
-  } else {
-    toneDescriptors.add("Balanced");
-  }
-  const strokeAverage = context.strokeSamples && context.strokeSamples.length ? average(context.strokeSamples) : profile.strokeWeight;
-  if (strokeAverage >= 3) {
-    highlights.push("Bold stroke presence suggests confident borders\u2014use for emphasis.");
-  } else if (strokeAverage <= 0.1) {
-    improvementIdeas.push("Strokes absent\u2014introduce keylines if the brand needs additional structure.");
-  }
-  if (shadowCount) {
-    toneDescriptors.add("Layered");
-    highlights.push(`Shadow system captured (${shadowCount}) for layered compositions.`);
-  } else {
-    toneDescriptors.add("Flat");
-    improvementIdeas.push("No shadows detected. Add subtle elevation if depth is part of the brand.");
-  }
-  if (selectionCount < 2) {
-    improvementIdeas.push("Provide 2\u20133 varied layouts to broaden the learned template vocabulary.");
-  }
-  const personality = paletteSize >= 3 && fontCount > 1 ? "Expressive modern system with balanced typography and color hierarchy." : paletteSize >= 2 ? "Minimal palette with focused storytelling elements." : "Foundation detected; add more branded elements for richer guidance.";
-  if (!highlights.length) {
-    highlights.push("Core layout tokens captured and ready for reuse.");
-  }
-  if (!improvementIdeas.length) {
-    improvementIdeas.push("Samples already cover a complete system\u2014ready to generate.");
-  }
-  return {
-    ...profile,
-    narrative: {
-      personality,
-      toneDescriptions: unique(Array.from(toneDescriptors))
-    },
-    insights: {
-      highlights: unique(highlights),
-      improvementIdeas: unique(improvementIdeas)
-    }
-  };
-};
-var mergeBrandingProfiles = (existing, incoming) => {
-  var _a2, _b, _c, _d, _e, _f, _g, _h, _i, _j;
-  if (!existing) {
-    return composeNarrative(incoming);
-  }
-  const weightExisting = Math.max(existing.metadata.sampleCount, 1);
-  const weightIncoming = Math.max(incoming.metadata.sampleCount, 1);
-  const colorMap = /* @__PURE__ */ new Map();
-  const addColors = (profile, weight) => {
-    profile.colors.forEach((swatch) => {
-      const entry = colorMap.get(swatch.hex);
-      if (entry) {
-        const combinedWeight = entry.weight + weight;
-        entry.paint = blendPaint(entry.paint, swatch.paint, entry.weight, weight);
-        entry.score = (entry.score * entry.weight + swatch.score * weight) / combinedWeight;
-        entry.weight = combinedWeight;
-      } else {
-        colorMap.set(swatch.hex, {
-          paint: clonePaint(swatch.paint),
-          score: swatch.score,
-          weight
-        });
-      }
-    });
-  };
-  addColors(existing, weightExisting);
-  addColors(incoming, weightIncoming);
-  let mergedColors = Array.from(colorMap.entries()).map(([hex, data]) => ({
-    hex,
-    paint: data.paint,
-    score: data.score,
-    weight: data.weight
-  })).sort((a, b) => b.score - a.score).slice(0, MAX_COLORS);
-  if (!mergedColors.length) {
-    mergedColors = incoming.colors.map((color) => ({
-      hex: color.hex,
-      paint: clonePaint(color.paint),
-      score: color.score,
-      weight: weightIncoming
-    }));
-  }
-  const mergedSwatches = mergedColors.map((swatch, index) => ({
-    hex: swatch.hex,
-    paint: swatch.paint,
-    score: swatch.score,
-    role: index === 0 ? "primary" : index === 1 ? "secondary" : index === 2 ? "accent" : "neutral"
-  }));
-  const fontMap = /* @__PURE__ */ new Map();
-  const addFonts = (profile, weight) => {
-    profile.typography.all.forEach((font) => {
-      const key = fontKey(font);
-      const entry = fontMap.get(key);
-      if (entry) {
-        entry.weight += weight;
-      } else {
-        fontMap.set(key, { font, weight });
-      }
-    });
-  };
-  addFonts(existing, weightExisting);
-  addFonts(incoming, weightIncoming);
-  const mergedFonts = Array.from(fontMap.values()).sort((a, b) => b.weight - a.weight);
-  const mergedPrimaryFont = (_d = (_c = (_b = (_a2 = mergedFonts[0]) == null ? void 0 : _a2.font) != null ? _b : incoming.typography.primary) != null ? _c : existing.typography.primary) != null ? _d : null;
-  const mergedSecondaryFont = (_j = (_i = (_h = (_g = (_e = mergedFonts[1]) == null ? void 0 : _e.font) != null ? _g : (_f = mergedFonts[0]) == null ? void 0 : _f.font) != null ? _h : incoming.typography.secondary) != null ? _i : existing.typography.secondary) != null ? _j : null;
-  const totalWeight = weightExisting + weightIncoming;
-  const mergedCornerRadius = (existing.cornerRadius * weightExisting + incoming.cornerRadius * weightIncoming) / totalWeight;
-  const mergedStrokeWeight = (existing.strokeWeight * weightExisting + incoming.strokeWeight * weightIncoming) / totalWeight;
-  const shadowMap = /* @__PURE__ */ new Map();
-  const addShadows = (profile) => {
-    profile.shadows.forEach((shadow) => {
-      const signature = shadowSignature(shadow);
-      if (!shadowMap.has(signature)) {
-        shadowMap.set(signature, { ...shadow });
-      }
-    });
-  };
-  addShadows(existing);
-  addShadows(incoming);
-  const mergedShadows = Array.from(shadowMap.values()).slice(0, 4);
-  const mergedBackground = blendPaint(
-    existing.surface.background,
-    incoming.surface.background,
-    weightExisting,
-    weightIncoming
-  );
-  const mergedElevated = blendPaint(
-    existing.surface.elevated,
-    incoming.surface.elevated,
-    weightExisting,
-    weightIncoming
-  );
-  const mergedMetadata = {
-    sampleCount: existing.metadata.sampleCount + incoming.metadata.sampleCount,
-    nodeIds: unique([...existing.metadata.nodeIds, ...incoming.metadata.nodeIds]).slice(-24)
-  };
-  const baseProfile = {
-    colors: mergedSwatches,
-    typography: {
-      primary: mergedPrimaryFont,
-      secondary: mergedSecondaryFont,
-      all: mergedFonts.map((entry) => entry.font)
-    },
-    cornerRadius: Math.min(32, Math.max(4, Math.round(mergedCornerRadius || 12))),
-    strokeWeight: Math.min(8, Math.max(0, mergedStrokeWeight || 2)),
-    shadows: mergedShadows,
-    surface: {
-      background: mergedBackground,
-      elevated: mergedElevated
-    },
-    narrative: {
-      personality: "",
-      toneDescriptions: []
-    },
-    insights: {
-      highlights: [],
-      improvementIdeas: []
-    },
-    metadata: mergedMetadata
-  };
-  return composeNarrative(baseProfile, {
-    paletteSize: baseProfile.colors.length,
-    fontCount: baseProfile.typography.all.length,
-    shadowCount: baseProfile.shadows.length
-  });
-};
-var analyzeSelection = (selection) => {
-  var _a2, _b, _c, _d, _e, _f, _g, _h, _i;
-  if (!selection.length) {
-    throw new Error("Select at least one frame or component to learn from.");
-  }
-  const colorFrequency = /* @__PURE__ */ new Map();
-  const fontFrequency = /* @__PURE__ */ new Map();
-  const cornerRadii = [];
-  const strokeWeights = [];
-  const shadows = [];
-  const visitedShadowSignatures = /* @__PURE__ */ new Set();
-  traverseNodes(selection, (node) => {
-    var _a3;
-    const nodePaints = extractSolidPaints(node);
-    for (const paint of nodePaints) {
-      const hex = toHex({ ...paint.color, a: (_a3 = paint.opacity) != null ? _a3 : 1 });
-      const entry = colorFrequency.get(hex);
-      if (entry) {
-        entry.count += 1;
-      } else {
-        colorFrequency.set(hex, { paint, count: 1 });
-      }
-    }
-    if ("cornerRadius" in node && typeof node.cornerRadius === "number" && isFinite(node.cornerRadius)) {
-      cornerRadii.push(node.cornerRadius);
-    } else if ("topLeftRadius" in node) {
-      const radii = [
-        node.topLeftRadius,
-        node.topRightRadius,
-        node.bottomLeftRadius,
-        node.bottomRightRadius
-      ].filter((value) => typeof value === "number" && isFinite(value));
-      cornerRadii.push(...radii);
-    }
-    if ("strokeWeight" in node && typeof node.strokeWeight === "number" && isFinite(node.strokeWeight)) {
-      strokeWeights.push(node.strokeWeight);
-    }
-    if ("effects" in node && Array.isArray(node.effects)) {
-      for (const effect of node.effects) {
-        if (effect.type === "DROP_SHADOW") {
-          const signature = shadowSignature(effect);
-          if (!visitedShadowSignatures.has(signature)) {
-            visitedShadowSignatures.add(signature);
-            shadows.push(effect);
-          }
+async function ensureFontsLoaded(family, weights) {
+  const uniqueWeights = Array.from(new Set(weights));
+  for (const weight of uniqueWeights) {
+    const style = weightToFontStyle(weight);
+    try {
+      await figma.loadFontAsync({ family, style });
+    } catch (error) {
+      if (style !== "Regular") {
+        try {
+          await figma.loadFontAsync({ family, style: "Regular" });
+          continue;
+        } catch (e) {
         }
+      }
+      figma.notify(`Font "${family} ${style}" is not available. Using Inter Regular instead.`, { timeout: 4e3 });
+      await figma.loadFontAsync({ family: "Inter", style: "Regular" });
+    }
+  }
+}
+function weightToFontStyle(weight) {
+  var _a;
+  const key = Object.keys(STYLE_MAP).map(Number).reduce((closest, candidate) => {
+    return Math.abs(candidate - weight) < Math.abs(closest - weight) ? candidate : closest;
+  }, 400);
+  return (_a = STYLE_MAP[key]) != null ? _a : "Regular";
+}
+
+// src/types/brand.ts
+var MODE_PROFILE2 = {
+  conservative: {
+    fontFamiliesMax: 1,
+    weightsMax: 2,
+    typeRatio: 1.2,
+    exploration: 0.1,
+    allowDisplay: false
+  },
+  pro: {
+    fontFamiliesMax: 2,
+    weightsMax: 3,
+    typeRatio: 1.25,
+    exploration: 0.3,
+    allowDisplay: true
+  },
+  creative: {
+    fontFamiliesMax: 3,
+    weightsMax: 4,
+    typeRatio: 1.33,
+    exploration: 0.6,
+    allowDisplay: true
+  }
+};
+
+// src/core/color.ts
+var HEX_REGEX = /^#?([0-9a-f]{6})([0-9a-f]{2})?$/i;
+function parseColorHex(hex) {
+  const match = HEX_REGEX.exec(hex);
+  if (!match) {
+    throw new Error(`Invalid color hex "${hex}".`);
+  }
+  const value = match[1];
+  const r = parseInt(value.slice(0, 2), 16);
+  const g = parseInt(value.slice(2, 4), 16);
+  const b = parseInt(value.slice(4, 6), 16);
+  return { r, g, b };
+}
+function normalizeHex(hex) {
+  const match = HEX_REGEX.exec(hex);
+  if (!match) {
+    throw new Error(`Invalid color hex "${hex}".`);
+  }
+  return `#${match[1].toUpperCase()}`;
+}
+function rgbToFigma(rgb) {
+  return {
+    r: clamp01(rgb.r / 255),
+    g: clamp01(rgb.g / 255),
+    b: clamp01(rgb.b / 255)
+  };
+}
+var clamp01 = (value) => Math.max(0, Math.min(1, value));
+function contrastRatio(hex1, hex2) {
+  const a = parseColorHex(hex1);
+  const b = parseColorHex(hex2);
+  const luminance = (channel) => {
+    const norm = channel / 255;
+    return norm <= 0.03928 ? norm / 12.92 : Math.pow((norm + 0.055) / 1.055, 2.4);
+  };
+  const lumA = 0.2126 * luminance(a.r) + 0.7152 * luminance(a.g) + 0.0722 * luminance(a.b);
+  const lumB = 0.2126 * luminance(b.r) + 0.7152 * luminance(b.g) + 0.0722 * luminance(b.b);
+  const brightest = Math.max(lumA, lumB);
+  const darkest = Math.min(lumA, lumB);
+  return (brightest + 0.05) / (darkest + 0.05);
+}
+function nearestPassToken(fgHex, bgHex, brandColors, minRatio) {
+  const tokens = Object.entries(brandColors);
+  let best = null;
+  tokens.forEach(([fgToken, fgValue]) => {
+    tokens.forEach(([bgToken, bgValue]) => {
+      const ratio = contrastRatio(fgValue, bgValue);
+      if (ratio >= minRatio) {
+        if (!best || ratio > best.ratio) {
+          best = { fg: fgValue, bg: bgValue, fgToken, bgToken, ratio };
+        }
+      }
+    });
+  });
+  if (best) {
+    return best;
+  }
+  return { fg: fgHex, bg: bgHex, fgToken: "primary", bgToken: "surface" };
+}
+
+// src/core/brand.ts
+var COLLECTION_SUFFIX = "Tokens";
+var VARIABLE_MODES = ["Default"];
+function parseBrandJSON(raw) {
+  var _a;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error("Brand JSON is not valid JSON.");
+  }
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Brand JSON must describe an object.");
+  }
+  const brand2 = parsed;
+  if (!brand2.name || typeof brand2.name !== "string") {
+    throw new Error('Brand JSON requires a "name" property.');
+  }
+  if (!brand2.colors) {
+    throw new Error('Brand JSON requires a "colors" object.');
+  }
+  const requiredColors = ["primary", "onPrimary", "secondary", "surface", "onSurface"];
+  requiredColors.forEach((token) => {
+    var _a2;
+    const value = (_a2 = brand2.colors) == null ? void 0 : _a2[token];
+    if (!value) {
+      throw new Error(`Brand JSON missing colors.${token}`);
+    }
+    parseColorHex(value);
+  });
+  if (!brand2.typography) {
+    throw new Error('Brand JSON requires a "typography" object.');
+  }
+  if (!brand2.typography.fontFamily) {
+    throw new Error('Brand JSON typography requires "fontFamily".');
+  }
+  if (!Array.isArray(brand2.typography.scale) || !brand2.typography.scale.length) {
+    throw new Error("Brand JSON typography.scale must be a non-empty array of strings.");
+  }
+  if (!brand2.typography.weights || !Object.keys(brand2.typography.weights).length) {
+    throw new Error("Brand JSON typography.weights must contain at least one entry.");
+  }
+  if (!brand2.spacing || typeof brand2.spacing.base !== "number" || !Array.isArray(brand2.spacing.scale)) {
+    throw new Error("Brand JSON requires spacing.base number and spacing.scale array.");
+  }
+  if (!brand2.radii || Object.keys(brand2.radii).length === 0) {
+    throw new Error("Brand JSON requires radii definitions.");
+  }
+  return {
+    logos: {},
+    ...brand2,
+    colors: Object.fromEntries(
+      Object.entries((_a = brand2.colors) != null ? _a : {}).map(([key, value]) => [key, normalizeHex(value)])
+    ),
+    typography: {
+      ...brand2.typography,
+      scale: brand2.typography.scale.map((value) => value.toString())
+    }
+  };
+}
+async function ensureBrandResources(brand2) {
+  var _a, _b;
+  const collectionName = `${brand2.name} ${COLLECTION_SUFFIX}`;
+  let collection = figma.variables.getLocalVariableCollections().find((c) => c.name === collectionName);
+  if (!collection) {
+    collection = figma.variables.createVariableCollection(collectionName);
+    VARIABLE_MODES.forEach((modeName) => {
+      if (!collection.modes.some((mode2) => mode2.name === modeName)) {
+        collection.addMode(modeName);
+      }
+    });
+  }
+  const defaultModeId = (_b = (_a = collection.modes[0]) == null ? void 0 : _a.modeId) != null ? _b : (() => {
+    const mode2 = collection.addMode("Default");
+    return mode2.modeId;
+  })();
+  const colorVariables = {};
+  const numberVariables = {};
+  const localColorVariables = figma.variables.getLocalVariables("COLOR").filter((variable) => variable.variableCollectionId === collection.id);
+  const upsertColorVariable = (token, hex) => {
+    const existing = localColorVariables.find((v) => v.name === token);
+    const rgb = rgbToFigma(parseColorHex(hex));
+    if (existing) {
+      existing.setValueForMode(defaultModeId, rgb);
+      colorVariables[token] = existing;
+      return existing;
+    }
+    const created = figma.variables.createVariable(token, collection.id, "COLOR");
+    created.setValueForMode(defaultModeId, rgb);
+    colorVariables[token] = created;
+    return created;
+  };
+  Object.entries(brand2.colors).forEach(([token, hex]) => {
+    upsertColorVariable(token, hex);
+  });
+  const localNumberVariables = figma.variables.getLocalVariables("FLOAT").filter((variable) => variable.variableCollectionId === collection.id);
+  const upsertNumberVariable = (token, value) => {
+    const existing = localNumberVariables.find((v) => v.name === token);
+    if (existing) {
+      existing.setValueForMode(defaultModeId, value);
+      numberVariables[token] = existing;
+      return existing;
+    }
+    const created = figma.variables.createVariable(token, collection.id, "FLOAT");
+    created.setValueForMode(defaultModeId, value);
+    numberVariables[token] = created;
+    return created;
+  };
+  upsertNumberVariable("spacing/base", brand2.spacing.base);
+  brand2.spacing.scale.forEach((value, index) => {
+    upsertNumberVariable(`spacing/scale/${index}`, value);
+  });
+  Object.entries(brand2.radii).forEach(([key, value]) => {
+    upsertNumberVariable(`radii/${key}`, value);
+  });
+  const weights = Object.entries(brand2.typography.weights).map(([label, weight]) => ({
+    label,
+    weight
+  }));
+  await ensureFontsLoaded(brand2.typography.fontFamily, weights.map((entry) => entry.weight));
+  if (brand2.typography.secondaryFamily) {
+    await ensureFontsLoaded(brand2.typography.secondaryFamily, weights.map((entry) => entry.weight));
+  }
+  const typographyStyles = {};
+  const existingStyles = figma.getLocalTextStyles();
+  const ensureTextStyle = (name, size, weight) => {
+    const styleName = `${brand2.name}/${name}`;
+    let style = existingStyles.find((textStyle) => textStyle.name === styleName);
+    if (!style) {
+      style = figma.createTextStyle();
+      style.name = styleName;
+    }
+    style.fontName = {
+      family: brand2.typography.fontFamily,
+      style: weightToStyle(weight)
+    };
+    style.fontSize = size;
+    style.lineHeight = {
+      unit: "PERCENT",
+      value: Math.round(MODE_PROFILE2.pro.typeRatio * 100)
+    };
+    typographyStyles[name] = style;
+    return style;
+  };
+  brand2.typography.scale.forEach((sizeString, index) => {
+    const size = parseFloat(sizeString);
+    if (!Number.isFinite(size)) {
+      return;
+    }
+    const weight = weights[Math.min(index, weights.length - 1)].weight;
+    ensureTextStyle(`Type/${size}`, size, weight);
+  });
+  return {
+    collectionId: collection.id,
+    modes: collection.modes.map((mode2) => mode2.modeId),
+    colorVariables,
+    numberVariables,
+    typographyStyles
+  };
+}
+function weightToStyle(weight) {
+  if (weight >= 800) return "Black";
+  if (weight >= 700) return "Bold";
+  if (weight >= 600) return "Semi Bold";
+  if (weight >= 500) return "Medium";
+  if (weight >= 400) return "Regular";
+  if (weight >= 300) return "Light";
+  return "Regular";
+}
+
+// src/core/canon.ts
+var DESIGN_CANON = {
+  contrast: { aa_normal: 4.5, aa_large: 3 },
+  typography: {
+    min_body_px: 16,
+    ratios: {
+      conservative: MODE_PROFILE2.conservative.typeRatio,
+      pro: MODE_PROFILE2.pro.typeRatio,
+      creative: MODE_PROFILE2.creative.typeRatio
+    }
+  },
+  spacing: { base: 8 },
+  grid: { columns: 12, gutter: 16 },
+  color_roles: { use_tokens: true, fallback_to_styles: true }
+};
+
+// src/core/contrast.ts
+function ensureContrast(brand2, fgToken, bgToken, isLargeText = false) {
+  var _a, _b;
+  const fg = (_a = brand2.colors[fgToken]) != null ? _a : brand2.colors.primary;
+  const bg = (_b = brand2.colors[bgToken]) != null ? _b : brand2.colors.surface;
+  const ratio = contrastRatio(fg, bg);
+  const required = isLargeText ? DESIGN_CANON.contrast.aa_large : DESIGN_CANON.contrast.aa_normal;
+  if (ratio >= required) {
+    return { fg, bg, fgToken, bgToken, ratio, adjusted: false };
+  }
+  const nearest = nearestPassToken(fg, bg, brand2.colors, required);
+  return {
+    fg: nearest.fg,
+    bg: nearest.bg,
+    fgToken: nearest.fgToken,
+    bgToken: nearest.bgToken,
+    ratio: contrastRatio(nearest.fg, nearest.bg),
+    adjusted: true
+  };
+}
+
+// src/core/layouts.ts
+async function createLayout(pattern, context) {
+  switch (pattern) {
+    case "hero":
+      return createHeroLayout(context);
+    case "card":
+      return createCardLayout(context);
+    case "social":
+      return createSocialLayout(context);
+  }
+}
+async function createHeroLayout(context) {
+  var _a, _b, _c, _d;
+  const { brand: brand2, variables: variables2, mode: mode2 } = context;
+  await ensureFontsLoaded(brand2.typography.fontFamily, Object.values(brand2.typography.weights));
+  const frame = figma.createFrame();
+  frame.name = `${brand2.name} \xB7 Hero`;
+  frame.resize(1440, 960);
+  frame.layoutMode = "VERTICAL";
+  frame.primaryAxisSizingMode = "FIXED";
+  frame.counterAxisSizingMode = "FIXED";
+  frame.primaryAxisAlignItems = "CENTER";
+  frame.counterAxisAlignItems = "CENTER";
+  frame.itemSpacing = 32;
+  setVariable(frame, "fills", variables2.colorVariables.surface.id);
+  setVariable(frame, "paddingLeft", variables2.numberVariables["spacing/base"].id);
+  setVariable(frame, "paddingRight", variables2.numberVariables["spacing/base"].id);
+  setVariable(frame, "paddingTop", (_b = (_a = variables2.numberVariables["spacing/scale/4"]) == null ? void 0 : _a.id) != null ? _b : variables2.numberVariables["spacing/base"].id);
+  setVariable(frame, "paddingBottom", (_d = (_c = variables2.numberVariables["spacing/scale/4"]) == null ? void 0 : _c.id) != null ? _d : variables2.numberVariables["spacing/base"].id);
+  ensureCornerRadius(frame, variables2);
+  const kicker = figma.createText();
+  kicker.name = "Kicker";
+  kicker.characters = "BrandPilot";
+  setTextStyle(kicker, brand2, variables2, 0, mode2);
+  setVariable(kicker, "fills", variables2.colorVariables.secondary.id);
+  frame.appendChild(kicker);
+  const heading = figma.createText();
+  heading.name = "Headline";
+  heading.characters = "Your brand. Your canon. Generated in minutes.";
+  setTextStyle(heading, brand2, variables2, 5, mode2);
+  setVariable(heading, "fills", variables2.colorVariables.onSurface.id);
+  heading.textAutoResize = "WIDTH_AND_HEIGHT";
+  frame.appendChild(heading);
+  const body = figma.createText();
+  body.name = "Body";
+  body.characters = "BrandPilot learns your tokens, enforces accessibility, and produces rationale-backed layouts for every launch.";
+  setTextStyle(body, brand2, variables2, 2, mode2);
+  setVariable(body, "fills", variables2.colorVariables.onSurface.id);
+  body.opacity = 0.78;
+  body.textAutoResize = "WIDTH_AND_HEIGHT";
+  frame.appendChild(body);
+  const buttonRow = figma.createFrame();
+  buttonRow.name = "Actions";
+  buttonRow.layoutMode = "HORIZONTAL";
+  buttonRow.primaryAxisSizingMode = "AUTO";
+  buttonRow.counterAxisSizingMode = "AUTO";
+  buttonRow.itemSpacing = 16;
+  buttonRow.counterAxisAlignItems = "CENTER";
+  buttonRow.primaryAxisAlignItems = "CENTER";
+  frame.appendChild(buttonRow);
+  buttonRow.appendChild(createButton("Generate hero", brand2, variables2, mode2, true));
+  buttonRow.appendChild(createButton("Explain rationale", brand2, variables2, mode2, false));
+  addHeroVisual(frame, brand2, variables2);
+  figma.currentPage.appendChild(frame);
+  frame.x = figma.viewport.center.x - frame.width / 2;
+  frame.y = figma.viewport.center.y - frame.height / 2;
+  return frame;
+}
+async function createCardLayout(context) {
+  var _a, _b, _c, _d, _e, _f, _g, _h;
+  const { brand: brand2, variables: variables2, variantIndex, mode: mode2 } = context;
+  await ensureFontsLoaded(brand2.typography.fontFamily, Object.values(brand2.typography.weights));
+  const frame = figma.createFrame();
+  frame.name = `${brand2.name} \xB7 Feature Card`;
+  frame.resize(520, 640);
+  frame.layoutMode = "VERTICAL";
+  frame.counterAxisAlignItems = "STRETCH";
+  frame.primaryAxisAlignItems = "CENTER";
+  frame.primaryAxisSizingMode = "FIXED";
+  frame.counterAxisSizingMode = "FIXED";
+  frame.itemSpacing = 20;
+  setVariable(frame, "fills", variables2.colorVariables.surface.id);
+  setVariable(frame, "paddingLeft", (_b = (_a = variables2.numberVariables["spacing/scale/2"]) == null ? void 0 : _a.id) != null ? _b : variables2.numberVariables["spacing/base"].id);
+  setVariable(frame, "paddingRight", (_d = (_c = variables2.numberVariables["spacing/scale/2"]) == null ? void 0 : _c.id) != null ? _d : variables2.numberVariables["spacing/base"].id);
+  setVariable(frame, "paddingTop", (_f = (_e = variables2.numberVariables["spacing/scale/3"]) == null ? void 0 : _e.id) != null ? _f : variables2.numberVariables["spacing/base"].id);
+  setVariable(frame, "paddingBottom", (_h = (_g = variables2.numberVariables["spacing/scale/3"]) == null ? void 0 : _g.id) != null ? _h : variables2.numberVariables["spacing/base"].id);
+  ensureCornerRadius(frame, variables2);
+  frame.effects = [
+    {
+      type: "DROP_SHADOW",
+      color: { r: 0, g: 0, b: 0, a: 0.08 },
+      radius: 20,
+      offset: { x: 0, y: 18 },
+      spread: -4,
+      visible: true,
+      blendMode: "NORMAL"
+    }
+  ];
+  const badge = figma.createText();
+  badge.characters = variantIndex % 2 === 0 ? "New capability" : "Playbook insight";
+  setTextStyle(badge, brand2, variables2, 0, mode2);
+  setVariable(badge, "fills", variables2.colorVariables.secondary.id);
+  badge.opacity = 0.82;
+  frame.appendChild(badge);
+  const title = figma.createText();
+  title.characters = variantIndex % 2 === 0 ? "Accessible cards in one click" : "Consistent tokens, every launch";
+  setTextStyle(title, brand2, variables2, 4, mode2);
+  setVariable(title, "fills", variables2.colorVariables.onSurface.id);
+  title.textAutoResize = "WIDTH_AND_HEIGHT";
+  frame.appendChild(title);
+  const paragraph = figma.createText();
+  paragraph.characters = "Apply tokens, fix contrast, and generate rationale-backed stories. BrandPilot keeps your system alive.";
+  setTextStyle(paragraph, brand2, variables2, 1, mode2);
+  setVariable(paragraph, "fills", variables2.colorVariables.onSurface.id);
+  paragraph.opacity = 0.72;
+  paragraph.textAutoResize = "WIDTH_AND_HEIGHT";
+  frame.appendChild(paragraph);
+  const metricsRow = figma.createFrame();
+  metricsRow.layoutMode = "VERTICAL";
+  metricsRow.counterAxisAlignItems = "STRETCH";
+  metricsRow.primaryAxisSizingMode = "AUTO";
+  metricsRow.counterAxisSizingMode = "AUTO";
+  metricsRow.itemSpacing = 12;
+  metricsRow.fills = [];
+  frame.appendChild(metricsRow);
+  metricsRow.appendChild(createKeyValueRow("Contrast AA", "Auto enforced"));
+  metricsRow.appendChild(createKeyValueRow("Tokens mapped", String(Object.keys(brand2.colors).length)));
+  figma.currentPage.appendChild(frame);
+  return frame;
+}
+async function createSocialLayout(context) {
+  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n;
+  const { brand: brand2, variables: variables2, mode: mode2 } = context;
+  await ensureFontsLoaded(brand2.typography.fontFamily, Object.values(brand2.typography.weights));
+  const frame = figma.createFrame();
+  frame.name = `${brand2.name} \xB7 Social`;
+  frame.resize(1080, 1350);
+  frame.layoutMode = "VERTICAL";
+  frame.primaryAxisSizingMode = "FIXED";
+  frame.counterAxisSizingMode = "FIXED";
+  frame.primaryAxisAlignItems = "CENTER";
+  frame.counterAxisAlignItems = "CENTER";
+  frame.itemSpacing = 24;
+  setVariable(frame, "fills", variables2.colorVariables.primary.id);
+  ensureCornerRadius(frame, variables2);
+  setVariable(frame, "paddingLeft", (_b = (_a = variables2.numberVariables["spacing/scale/3"]) == null ? void 0 : _a.id) != null ? _b : variables2.numberVariables["spacing/base"].id);
+  setVariable(frame, "paddingRight", (_d = (_c = variables2.numberVariables["spacing/scale/3"]) == null ? void 0 : _c.id) != null ? _d : variables2.numberVariables["spacing/base"].id);
+  setVariable(frame, "paddingTop", (_f = (_e = variables2.numberVariables["spacing/scale/4"]) == null ? void 0 : _e.id) != null ? _f : variables2.numberVariables["spacing/base"].id);
+  setVariable(frame, "paddingBottom", (_h = (_g = variables2.numberVariables["spacing/scale/4"]) == null ? void 0 : _g.id) != null ? _h : variables2.numberVariables["spacing/base"].id);
+  const ratio = ensureContrast(brand2, "onPrimary", "primary", true);
+  const kicker = figma.createText();
+  kicker.characters = `Contrast ${ratio.ratio.toFixed(2)}\xD7 AA`;
+  setTextStyle(kicker, brand2, variables2, 1, mode2);
+  setVariable(kicker, "fills", (_j = (_i = variables2.colorVariables[ratio.fgToken]) == null ? void 0 : _i.id) != null ? _j : variables2.colorVariables.onPrimary.id);
+  kicker.opacity = 0.82;
+  frame.appendChild(kicker);
+  const headline = figma.createText();
+  headline.characters = "Creative mode explores safely.";
+  setTextStyle(headline, brand2, variables2, 5, mode2);
+  setVariable(headline, "fills", (_l = (_k = variables2.colorVariables[ratio.fgToken]) == null ? void 0 : _k.id) != null ? _l : variables2.colorVariables.onPrimary.id);
+  headline.textAutoResize = "WIDTH_AND_HEIGHT";
+  frame.appendChild(headline);
+  const caption = figma.createText();
+  caption.characters = "Bounded exploration keeps brand memory sharp while producing fresh executions.";
+  setTextStyle(caption, brand2, variables2, 2, mode2);
+  setVariable(caption, "fills", (_n = (_m = variables2.colorVariables[ratio.fgToken]) == null ? void 0 : _m.id) != null ? _n : variables2.colorVariables.onPrimary.id);
+  caption.opacity = 0.78;
+  caption.textAutoResize = "WIDTH_AND_HEIGHT";
+  frame.appendChild(caption);
+  const footer = figma.createFrame();
+  footer.layoutMode = "HORIZONTAL";
+  footer.primaryAxisSizingMode = "AUTO";
+  footer.counterAxisSizingMode = "AUTO";
+  footer.itemSpacing = 12;
+  footer.counterAxisAlignItems = "CENTER";
+  footer.fills = [];
+  frame.appendChild(footer);
+  footer.appendChild(createChip(`Mode: ${mode2[0].toUpperCase()}${mode2.slice(1)}`, brand2, variables2, mode2));
+  footer.appendChild(createChip("AA guaranteed", brand2, variables2, mode2));
+  figma.currentPage.appendChild(frame);
+  return frame;
+}
+function createButton(label, brand2, variables2, mode2, primary) {
+  var _a, _b, _c, _d, _e, _f, _g, _h;
+  const button = figma.createFrame();
+  button.name = `Button \xB7 ${label}`;
+  button.layoutMode = "HORIZONTAL";
+  button.primaryAxisSizingMode = "AUTO";
+  button.counterAxisSizingMode = "AUTO";
+  button.counterAxisAlignItems = "CENTER";
+  button.primaryAxisAlignItems = "CENTER";
+  button.itemSpacing = 12;
+  setVariable(button, "paddingLeft", (_b = (_a = variables2.numberVariables["spacing/scale/2"]) == null ? void 0 : _a.id) != null ? _b : variables2.numberVariables["spacing/base"].id);
+  setVariable(button, "paddingRight", (_d = (_c = variables2.numberVariables["spacing/scale/2"]) == null ? void 0 : _c.id) != null ? _d : variables2.numberVariables["spacing/base"].id);
+  setVariable(button, "paddingTop", (_f = (_e = variables2.numberVariables["spacing/scale/1"]) == null ? void 0 : _e.id) != null ? _f : variables2.numberVariables["spacing/base"].id);
+  setVariable(button, "paddingBottom", (_h = (_g = variables2.numberVariables["spacing/scale/1"]) == null ? void 0 : _g.id) != null ? _h : variables2.numberVariables["spacing/base"].id);
+  ensureCornerRadius(button, variables2);
+  if (primary) {
+    setVariable(button, "fills", variables2.colorVariables.primary.id);
+  } else {
+    setVariable(button, "fills", variables2.colorVariables.surface.id);
+    setVariable(button, "strokes", variables2.colorVariables.primary.id);
+    button.strokeWeight = 1;
+  }
+  const text = figma.createText();
+  text.characters = label;
+  setTextStyle(text, brand2, variables2, 1, mode2);
+  setVariable(
+    text,
+    "fills",
+    (primary ? variables2.colorVariables.onPrimary : variables2.colorVariables.primary).id
+  );
+  text.textAutoResize = "WIDTH_AND_HEIGHT";
+  button.appendChild(text);
+  return button;
+}
+function createChip(label, brand2, variables2, mode2) {
+  var _a, _b, _c, _d, _e, _f, _g, _h;
+  const chip = figma.createFrame();
+  chip.layoutMode = "HORIZONTAL";
+  chip.primaryAxisSizingMode = "AUTO";
+  chip.counterAxisSizingMode = "AUTO";
+  chip.counterAxisAlignItems = "CENTER";
+  chip.primaryAxisAlignItems = "CENTER";
+  chip.itemSpacing = 8;
+  ensureCornerRadius(chip, variables2, 999);
+  setVariable(chip, "fills", variables2.colorVariables.surface.id);
+  setVariable(chip, "paddingLeft", (_b = (_a = variables2.numberVariables["spacing/scale/1"]) == null ? void 0 : _a.id) != null ? _b : variables2.numberVariables["spacing/base"].id);
+  setVariable(chip, "paddingRight", (_d = (_c = variables2.numberVariables["spacing/scale/1"]) == null ? void 0 : _c.id) != null ? _d : variables2.numberVariables["spacing/base"].id);
+  setVariable(chip, "paddingTop", (_f = (_e = variables2.numberVariables["spacing/scale/1"]) == null ? void 0 : _e.id) != null ? _f : variables2.numberVariables["spacing/base"].id);
+  setVariable(chip, "paddingBottom", (_h = (_g = variables2.numberVariables["spacing/scale/1"]) == null ? void 0 : _g.id) != null ? _h : variables2.numberVariables["spacing/base"].id);
+  const text = figma.createText();
+  text.characters = label;
+  setTextStyle(text, brand2, variables2, 0, mode2);
+  setVariable(text, "fills", variables2.colorVariables.primary.id);
+  chip.appendChild(text);
+  return chip;
+}
+function createKeyValueRow(label, value) {
+  const row = figma.createFrame();
+  row.layoutMode = "VERTICAL";
+  row.primaryAxisSizingMode = "AUTO";
+  row.counterAxisSizingMode = "AUTO";
+  row.fills = [];
+  const title = figma.createText();
+  title.characters = label;
+  title.fontSize = 12;
+  title.opacity = 0.64;
+  row.appendChild(title);
+  const body = figma.createText();
+  body.characters = value;
+  body.fontSize = 16;
+  body.fontName = { family: "Inter", style: "Medium" };
+  row.appendChild(body);
+  return row;
+}
+function addHeroVisual(frame, brand2, variables2) {
+  const visual = figma.createRectangle();
+  visual.resize(frame.width - 160, 320);
+  ensureCornerRadius(visual, variables2);
+  setVariable(visual, "fills", variables2.colorVariables.secondary.id);
+  setVariable(visual, "strokes", variables2.colorVariables.onPrimary.id);
+  visual.strokeWeight = 0;
+  frame.appendChild(visual);
+}
+function setTextStyle(node, brand2, variables2, scaleIndex, mode2) {
+  var _a;
+  const scale = brand2.typography.scale;
+  const cappedIndex = Math.min(scaleIndex, scale.length - 1);
+  const size = parseFloat(scale[cappedIndex]);
+  const weights = Object.values(brand2.typography.weights);
+  const weight = (_a = weights[Math.min(cappedIndex, weights.length - 1)]) != null ? _a : 400;
+  node.fontName = { family: brand2.typography.fontFamily, style: weightToStyle2(weight) };
+  node.fontSize = size;
+  node.lineHeight = { unit: "PERCENT", value: MODE_PROFILE2[mode2].typeRatio * 100 };
+}
+function weightToStyle2(weight) {
+  if (weight >= 800) return "Black";
+  if (weight >= 700) return "Bold";
+  if (weight >= 600) return "Semi Bold";
+  if (weight >= 500) return "Medium";
+  if (weight >= 400) return "Regular";
+  if (weight >= 300) return "Light";
+  return "Regular";
+}
+function ensureCornerRadius(node, variables2, fallbackRadius) {
+  var _a, _b;
+  const radiusVariable = (_b = (_a = variables2.numberVariables["radii/md"]) != null ? _a : variables2.numberVariables["radii/default"]) != null ? _b : variables2.numberVariables["radii/sm"];
+  if (radiusVariable) {
+    setVariable(node, "cornerRadius", radiusVariable.id);
+  } else if (fallbackRadius) {
+    node.cornerRadius = fallbackRadius;
+  } else {
+    node.cornerRadius = 8;
+  }
+}
+function setVariable(node, property, variableId) {
+  var _a;
+  if (!("boundVariables" in node)) {
+    return;
+  }
+  const bound = (_a = node.boundVariables) != null ? _a : {};
+  bound[property] = { type: "VARIABLE_ALIAS", id: variableId };
+  node.boundVariables = bound;
+}
+
+// src/core/apply.ts
+async function applyBrandToSelection(selection, brand2, variables2, options) {
+  if (!selection.length) {
+    throw new Error("Select at least one layer to apply the brand.");
+  }
+  selection.forEach((node) => {
+    applyNode(node, brand2, variables2, options);
+  });
+}
+function applyNode(node, brand2, variables2, options) {
+  var _a, _b, _c, _d, _e, _f, _g;
+  if ("fills" in node && Array.isArray(node.fills)) {
+    setVariable2(node, "fills", variables2.colorVariables.surface.id);
+  }
+  if ("strokes" in node && Array.isArray(node.strokes)) {
+    setVariable2(node, "strokes", variables2.colorVariables.primary.id);
+  }
+  if (options.includeSpacing && "paddingLeft" in node) {
+    setVariable2(node, "paddingLeft", variables2.numberVariables["spacing/base"].id);
+    setVariable2(node, "paddingRight", variables2.numberVariables["spacing/base"].id);
+  }
+  if (options.includeSpacing && "itemSpacing" in node) {
+    setVariable2(node, "itemSpacing", (_b = (_a = variables2.numberVariables["spacing/scale/1"]) == null ? void 0 : _a.id) != null ? _b : variables2.numberVariables["spacing/base"].id);
+  }
+  if (options.includeTypography && node.type === "TEXT") {
+    const ratio = ensureContrast(brand2, "onSurface", "surface", node.fontSize >= 24);
+    setVariable2(node, "fills", (_d = (_c = variables2.colorVariables[ratio.fgToken]) == null ? void 0 : _c.id) != null ? _d : variables2.colorVariables.onSurface.id);
+    const mediumWeight = (_g = (_f = (_e = brand2.typography.weights.medium) != null ? _e : brand2.typography.weights.regular) != null ? _f : Object.values(brand2.typography.weights)[0]) != null ? _g : 400;
+    node.fontName = { family: brand2.typography.fontFamily, style: weightToStyle3(mediumWeight) };
+  }
+  if ("children" in node) {
+    node.children.forEach((child) => applyNode(child, brand2, variables2, options));
+  }
+}
+function weightToStyle3(fontSize) {
+  if (fontSize >= 32) return "Semi Bold";
+  if (fontSize >= 24) return "Medium";
+  return "Regular";
+}
+function setVariable2(node, property, variableId) {
+  var _a;
+  if (!("boundVariables" in node)) {
+    return;
+  }
+  const bound = (_a = node.boundVariables) != null ? _a : {};
+  bound[property] = { type: "VARIABLE_ALIAS", id: variableId };
+  node.boundVariables = bound;
+}
+
+// src/core/learn.ts
+var STORAGE_KEY = "brandpilot:feedback";
+async function recordFeedback(key, upvote) {
+  var _a;
+  const snapshot = await loadSnapshot();
+  const current = (_a = snapshot.feedback[key]) != null ? _a : { positive: 1, negative: 1 };
+  const updated = {
+    positive: current.positive + (upvote ? 1 : 0),
+    negative: current.negative + (upvote ? 0 : 1)
+  };
+  snapshot.feedback[key] = updated;
+  snapshot.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  await saveSnapshot(snapshot);
+  return snapshot;
+}
+async function incrementApprovals() {
+  const snapshot = await loadSnapshot();
+  snapshot.selectionsApproved += 1;
+  snapshot.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+  await saveSnapshot(snapshot);
+  return snapshot;
+}
+async function loadSnapshot() {
+  const raw = await figma.clientStorage.getAsync(STORAGE_KEY);
+  if (raw && typeof raw === "object") {
+    return raw;
+  }
+  return {
+    updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    selectionsApproved: 0,
+    feedback: {}
+  };
+}
+async function saveSnapshot(snapshot) {
+  await figma.clientStorage.setAsync(STORAGE_KEY, snapshot);
+}
+
+// src/core/explain.ts
+var CONTRAST_THRESHOLD = 0.2;
+function buildRationale(input) {
+  const bullets = [];
+  const { component, colors, type, spacing, contrast, changes } = input;
+  bullets.push(`Applied brand tokens ${Object.values(colors.brandTokens).join(", ")} across ${component} layout.`);
+  if (contrast.ratio) {
+    const delta = contrast.ratio - contrast.required;
+    if (delta >= CONTRAST_THRESHOLD) {
+      bullets.push(`Contrast improved to ${contrast.ratio.toFixed(2)}\xD7 (AA\u2265${contrast.required.toFixed(1)}).`);
+    } else if (delta < 0) {
+      bullets.push(`Contrast adjusted to meet AA ${contrast.required.toFixed(1)}\xD7, currently ${contrast.ratio.toFixed(2)}\xD7.`);
+    }
+  }
+  bullets.push(
+    `Type scale uses ${type.family} at ${type.size}px with ${type.lineHeight}% line-height for readable hierarchy.`
+  );
+  if (spacing.base) {
+    bullets.push(`Spacing aligned to ${spacing.base}px base grid for consistent rhythm.`);
+  }
+  changes.forEach((change) => {
+    const { what, from, to } = change;
+    if (from === void 0) {
+      bullets.push(`Set ${what} to ${String(to)}.`);
+    } else if (from !== to) {
+      bullets.push(`Changed ${what} from ${String(from)} \u2192 ${String(to)}.`);
+    }
+  });
+  return bullets.slice(0, 5);
+}
+
+// src/core/chat.ts
+var SNAPSHOT_KEY = "brandpilot:lastChat";
+function buildChatPlan(nodes, request, brand2, variables2, mode2) {
+  const lower = request.toLowerCase();
+  const changes = [];
+  const rationaleTokens = {};
+  const wantsSecondary = lower.includes("secondary color") || lower.includes("accent");
+  const wantsPrimary = lower.includes("primary color");
+  const tightenLine = lower.includes("tighten line") || lower.includes("reduce line");
+  const loosenLine = lower.includes("loosen line") || lower.includes("increase line");
+  const increasePadding = lower.includes("more padding") || lower.includes("increase padding") || lower.includes("room");
+  const decreasePadding = lower.includes("less padding") || lower.includes("tighten padding");
+  nodes.forEach((node) => {
+    var _a;
+    if ("fills" in node && (wantsSecondary || wantsPrimary)) {
+      const targetVariable = wantsSecondary ? variables2.colorVariables.secondary : variables2.colorVariables.primary;
+      if (targetVariable) {
+        const original = captureFill(node);
+        changes.push({
+          nodeId: node.id,
+          nodeName: node.name,
+          property: "fills",
+          from: original,
+          to: targetVariable.id,
+          apply: () => setVariable3(node, "fills", targetVariable.id)
+        });
+        rationaleTokens.fill = targetVariable.name;
       }
     }
     if (node.type === "TEXT") {
-      const collectFont = (font) => {
-        const descriptor = {
-          family: font.family,
-          style: font.style,
-          weightClass: typeof font.weight === "number" ? font.weight : void 0
-        };
-        const key = fontKey(descriptor);
-        const entry = fontFrequency.get(key);
-        if (entry) {
-          entry.count += 1;
-        } else {
-          fontFrequency.set(key, { font: descriptor, count: 1 });
-        }
-      };
-      if (node.fontName !== figma.mixed) {
-        collectFont(node.fontName);
-      } else {
-        const length = node.characters.length;
-        for (let i = 0; i < length; i++) {
-          try {
-            const font = node.getRangeFontName(i, i + 1);
-            if (font !== figma.mixed) {
-              collectFont(font);
+      if (tightenLine || loosenLine) {
+        const current = node.lineHeight;
+        const currentPercent = current && typeof current === "object" && current.unit === "PERCENT" ? current.value : 120;
+        const delta = tightenLine ? -10 : 10;
+        const target = Math.max(110, Math.min(160, currentPercent + delta));
+        changes.push({
+          nodeId: node.id,
+          nodeName: node.name,
+          property: "lineHeight",
+          from: currentPercent,
+          to: target,
+          apply: () => {
+            node.lineHeight = { unit: "PERCENT", value: target };
+            const contrast = ensureContrast(brand2, "onSurface", "surface", node.fontSize >= 24);
+            const token = contrast.adjusted ? contrast.fgToken : "onSurface";
+            const variable = variables2.colorVariables[token];
+            if (variable) {
+              setVariable3(node, "fills", variable.id);
             }
-          } catch (e) {
+            rationaleTokens.lineHeight = `${target}%`;
           }
-        }
+        });
+      }
+    }
+    if ("paddingLeft" in node && (increasePadding || decreasePadding)) {
+      const paddingVariable = (_a = variables2.numberVariables[increasePadding ? "spacing/scale/3" : "spacing/scale/1"]) != null ? _a : variables2.numberVariables["spacing/base"];
+      if (paddingVariable) {
+        const current = {
+          left: node.paddingLeft,
+          right: node.paddingRight,
+          top: node.paddingTop,
+          bottom: node.paddingBottom
+        };
+        changes.push({
+          nodeId: node.id,
+          nodeName: node.name,
+          property: "padding",
+          from: current,
+          to: paddingVariable.name,
+          apply: () => {
+            setVariable3(node, "paddingLeft", paddingVariable.id);
+            setVariable3(node, "paddingRight", paddingVariable.id);
+            setVariable3(node, "paddingTop", paddingVariable.id);
+            setVariable3(node, "paddingBottom", paddingVariable.id);
+            rationaleTokens.padding = paddingVariable.name;
+          }
+        });
       }
     }
   });
-  const sortedColors = Array.from(colorFrequency.entries()).map(([hex, { paint, count }]) => ({
-    hex,
-    paint,
-    count,
-    score: scoreColor(paint, count)
-  })).sort((a, b) => b.score - a.score).slice(0, MAX_COLORS);
-  const [primary, secondary, accent] = sortedColors;
-  const neutral = sortedColors.find((color) => {
-    var _a3;
-    return color.score < ((_a3 = primary == null ? void 0 : primary.score) != null ? _a3 : 0) * 0.85;
-  });
-  const colors = [];
-  sortedColors.forEach((color, index) => {
-    const role = index === 0 ? "primary" : index === 1 ? "secondary" : index === 2 ? "accent" : "neutral";
-    colors.push({
-      hex: color.hex,
-      paint: color.paint,
-      score: color.score,
-      role
+  return { changes, rationaleTokens };
+}
+function applyChatPlan(plan) {
+  const diffs = [];
+  plan.changes.forEach((change) => {
+    const node = figma.getNodeById(change.nodeId);
+    if (!node || !isSceneNode(node)) return;
+    const snapshot = getSnapshot(node);
+    snapshot[change.property] = change.from;
+    setSnapshot(node, snapshot);
+    change.apply();
+    diffs.push({
+      nodeId: change.nodeId,
+      nodeName: change.nodeName,
+      property: change.property,
+      from: change.from,
+      to: change.to
     });
   });
-  if (!colors.length) {
-    colors.push({
-      hex: "#2563EB",
-      paint: {
-        type: "SOLID",
-        color: { r: 0.145, g: 0.388, b: 0.921 }
-      },
-      role: "primary",
-      score: 1
+  return diffs;
+}
+function revertLastChat(nodes) {
+  let reverted = 0;
+  nodes.forEach((node) => {
+    const snapshot = getSnapshot(node);
+    if (!snapshot) return;
+    Object.entries(snapshot).forEach(([property, value]) => {
+      restoreProperty(node, property, value);
     });
-  }
-  const fontEntries = Array.from(fontFrequency.values()).sort((a, b) => b.count - a.count);
-  const primaryFont = (_b = (_a2 = fontEntries[0]) == null ? void 0 : _a2.font) != null ? _b : null;
-  const secondaryFont = (_d = (_c = fontEntries[1]) == null ? void 0 : _c.font) != null ? _d : null;
-  const backgroundPaint = (_e = neutral == null ? void 0 : neutral.paint) != null ? _e : primary ? mixColor(primary.paint.color, 0.82) : {
-    type: "SOLID",
-    color: { r: 0.97, g: 0.97, b: 0.97 }
-  };
-  const elevatedPaint = (_f = secondary == null ? void 0 : secondary.paint) != null ? _f : primary ? mixColor(primary.paint.color, 0.92) : {
-    type: "SOLID",
-    color: { r: 0.92, g: 0.93, b: 0.96 }
-  };
-  const baseProfile = {
-    colors,
-    typography: {
-      primary: primaryFont,
-      secondary: secondaryFont,
-      all: fontEntries.map((entry) => entry.font)
-    },
-    cornerRadius: Math.min(32, Math.max(4, Math.round(average(cornerRadii) || 12))),
-    strokeWeight: Math.min(8, Math.max(0, average(strokeWeights) || 2)),
-    shadows: shadows.slice(0, 4),
-    surface: {
-      background: backgroundPaint,
-      elevated: darkenColor(elevatedPaint, 0.05)
-    },
-    narrative: {
-      personality: "",
-      toneDescriptions: []
-    },
-    insights: {
-      highlights: [],
-      improvementIdeas: []
-    },
-    metadata: {
-      sampleCount: selection.length,
-      nodeIds: selection.map((node) => node.id)
-    }
-  };
-  return composeNarrative(baseProfile, {
-    selectionCount: selection.length,
-    paletteSize: sortedColors.length,
-    fontCount: fontEntries.length,
-    primaryHex: (_g = primary == null ? void 0 : primary.hex) != null ? _g : null,
-    secondaryHex: (_h = secondary == null ? void 0 : secondary.hex) != null ? _h : null,
-    accentHex: (_i = accent == null ? void 0 : accent.hex) != null ? _i : null,
-    cornerRadiusSamples: cornerRadii,
-    strokeSamples: strokeWeights,
-    shadowCount: shadows.length
+    node.setPluginData(SNAPSHOT_KEY, "");
+    reverted += 1;
   });
-};
-
-// src/generator.ts
-var TEMPLATE_DIMENSIONS = {
-  hero: { width: 1440, height: 1024 },
-  social: { width: 1080, height: 1350 },
-  announcement: { width: 1280, height: 720 },
-  email: { width: 800, height: 1200 }
-};
-var toFigmaPaint = (swatch) => {
-  var _a2;
-  return {
-    ...swatch.paint,
-    opacity: (_a2 = swatch.paint.opacity) != null ? _a2 : 1
-  };
-};
-var ensureFonts = async (profile) => {
-  const fallbackFonts = [
-    { family: "Inter", style: "Regular" },
-    { family: "Inter", style: "Medium" },
-    { family: "Inter", style: "Semi Bold" },
-    { family: "Inter", style: "Bold" }
-  ];
-  const fontMap = /* @__PURE__ */ new Map();
-  const register = (font) => {
-    if (!font) return;
-    const key = `${font.family}::${font.style}`;
-    if (!fontMap.has(key)) {
-      fontMap.set(key, font);
-    }
-  };
-  register(profile.typography.primary);
-  register(profile.typography.secondary);
-  fallbackFonts.forEach(register);
-  await Promise.all(
-    Array.from(fontMap.values()).map(async (font) => {
-      try {
-        await figma.loadFontAsync({ family: font.family, style: font.style });
-      } catch (e) {
-      }
-    })
-  );
-};
-var createText = (context, text, options) => {
-  var _a2;
-  const node = figma.createText();
-  const font = options.fontName && options.fontName !== figma.mixed ? options.fontName : context.profile.typography.primary;
-  if (font) {
-    node.fontName = font;
+  return reverted;
+}
+function captureFill(node) {
+  var _a, _b, _c;
+  return (_c = (_b = (_a = node.boundVariables) == null ? void 0 : _a.fills) == null ? void 0 : _b.id) != null ? _c : null;
+}
+function setVariable3(node, property, variableId) {
+  var _a;
+  if (!("boundVariables" in node)) {
+    return;
   }
-  node.characters = text;
-  if (typeof options.fontSize === "number") {
-    node.fontSize = options.fontSize;
-  }
-  if (typeof options.lineHeight === "object" || typeof options.lineHeight === "number") {
-    node.lineHeight = options.lineHeight;
-  }
-  if (typeof options.letterSpacing === "object" || typeof options.letterSpacing === "number") {
-    node.letterSpacing = options.letterSpacing;
-  }
-  if (options.textAutoResize) {
-    node.textAutoResize = options.textAutoResize;
-  } else {
-    node.textAutoResize = "WIDTH_AND_HEIGHT";
-  }
-  if (options.fills && Array.isArray(options.fills)) {
-    node.fills = options.fills;
-  } else {
-    node.fills = [
-      toFigmaPaint(
-        (_a2 = context.profile.colors.find((color) => color.role === "primary")) != null ? _a2 : context.profile.colors[0]
-      )
-    ];
-  }
-  if (options.textAlignHorizontal) {
-    node.textAlignHorizontal = options.textAlignHorizontal;
-  }
-  if (options.textAlignVertical) {
-    node.textAlignVertical = options.textAlignVertical;
-  }
-  if (options.opacity !== void 0) {
-    node.opacity = options.opacity;
-  }
-  if (options.paragraphSpacing !== void 0) {
-    node.paragraphSpacing = options.paragraphSpacing;
-  }
-  return node;
-};
-var createButton = (context, label) => {
-  var _a2, _b, _c, _d;
-  const buttonFrame = figma.createFrame();
-  buttonFrame.name = "CTA Button";
-  buttonFrame.layoutMode = "HORIZONTAL";
-  buttonFrame.counterAxisAlignItems = "CENTER";
-  buttonFrame.primaryAxisAlignItems = "CENTER";
-  buttonFrame.primaryAxisSizingMode = "AUTO";
-  buttonFrame.counterAxisSizingMode = "AUTO";
-  buttonFrame.paddingLeft = 28;
-  buttonFrame.paddingRight = 28;
-  buttonFrame.paddingTop = 12;
-  buttonFrame.paddingBottom = 12;
-  buttonFrame.itemSpacing = 12;
-  buttonFrame.cornerRadius = context.profile.cornerRadius;
-  buttonFrame.fills = [
-    toFigmaPaint(
-      (_b = (_a2 = context.profile.colors.find((color) => color.role === "accent")) != null ? _a2 : context.profile.colors[1]) != null ? _b : context.profile.colors[0]
-    )
-  ];
-  const text = createText(context, label, {
-    fontSize: 18,
-    fontName: (_d = (_c = context.profile.typography.secondary) != null ? _c : context.profile.typography.primary) != null ? _d : {
-      family: "Inter",
-      style: "Medium"
-    },
-    textAutoResize: "WIDTH_AND_HEIGHT",
-    fills: [
-      {
-        type: "SOLID",
-        color: { r: 1, g: 1, b: 1 }
-      }
-    ]
-  });
-  buttonFrame.appendChild(text);
-  return buttonFrame;
-};
-var applySurface = (frame, paint) => {
-  frame.fills = [{ ...paint }];
-};
-var createImagePlaceholder = (context, options) => {
-  var _a2, _b, _c;
-  const rect = figma.createRectangle();
-  rect.resizeWithoutConstraints(options.width, options.height);
-  rect.cornerRadius = (_a2 = options.cornerRadius) != null ? _a2 : context.profile.cornerRadius;
-  const accent = (_b = context.profile.colors.find((color) => color.role === "secondary")) != null ? _b : context.profile.colors[0];
-  const overlay = (_c = context.profile.colors.find((color) => color.role === "accent")) != null ? _c : accent;
-  rect.fills = [
-    toFigmaPaint(options.useAccent ? overlay : accent),
-    {
-      type: "GRADIENT_LINEAR",
-      gradientTransform: [
-        [0.96, 0.28, 0],
-        [-0.28, 0.96, 0.18]
-      ],
-      gradientStops: [
-        { position: 0, color: { r: 1, g: 1, b: 1, a: 0.1 } },
-        { position: 1, color: { r: 0, g: 0, b: 0, a: 0.18 } }
-      ]
-    }
-  ];
-  rect.strokeWeight = context.profile.strokeWeight;
-  rect.strokes = [
-    {
-      type: "SOLID",
-      color: {
-        r: 1,
-        g: 1,
-        b: 1
-      },
-      opacity: 0.08
-    }
-  ];
-  return rect;
-};
-var templateFactories = {
-  hero: async ({ frame, profile }) => {
-    var _a2, _b, _c, _d, _e, _f;
-    frame.name = "Branded Hero";
-    frame.layoutMode = "VERTICAL";
-    frame.primaryAxisAlignItems = "CENTER";
-    frame.counterAxisAlignItems = "CENTER";
-    frame.primaryAxisSizingMode = "FIXED";
-    frame.counterAxisSizingMode = "FIXED";
-    frame.itemSpacing = 24;
-    frame.paddingTop = 96;
-    frame.paddingBottom = 96;
-    frame.paddingLeft = 96;
-    frame.paddingRight = 96;
-    frame.clipsContent = false;
-    applySurface(frame, profile.surface.background);
-    const badge = createText(
-      { frame, profile },
-      "\u2728 Signature Collection",
-      {
-        fontSize: 16,
-        textAutoResize: "WIDTH_AND_HEIGHT",
-        fontName: (_b = (_a2 = profile.typography.secondary) != null ? _a2 : profile.typography.primary) != null ? _b : { family: "Inter", style: "Semi Bold" },
-        fills: [
-          toFigmaPaint(
-            (_c = profile.colors.find((color) => color.role === "accent")) != null ? _c : profile.colors[0]
-          )
-        ],
-        opacity: 0.75,
-        letterSpacing: { unit: "PERCENT", value: 8 }
-      }
-    );
-    const heading = createText(
-      { frame, profile },
-      "Designs that feel unmistakably you.",
-      {
-        fontSize: 64,
-        lineHeight: { unit: "PERCENT", value: 110 },
-        textAutoResize: "WIDTH_AND_HEIGHT",
-        fontName: (_d = profile.typography.primary) != null ? _d : {
-          family: "Inter",
-          style: "Bold"
-        },
-        textAlignHorizontal: "CENTER"
-      }
-    );
-    const body = createText(
-      { frame, profile },
-      "High fidelity campaign templates handcrafted to embody your voice across every touchpoint.",
-      {
-        fontSize: 20,
-        lineHeight: { unit: "PERCENT", value: 150 },
-        opacity: 0.78,
-        textAlignHorizontal: "CENTER",
-        textAutoResize: "WIDTH_AND_HEIGHT",
-        fontName: (_f = (_e = profile.typography.secondary) != null ? _e : profile.typography.primary) != null ? _f : {
-          family: "Inter",
-          style: "Regular"
-        }
-      }
-    );
-    const buttonRow = figma.createFrame();
-    buttonRow.layoutMode = "HORIZONTAL";
-    buttonRow.counterAxisAlignItems = "CENTER";
-    buttonRow.primaryAxisAlignItems = "CENTER";
-    buttonRow.primaryAxisSizingMode = "AUTO";
-    buttonRow.counterAxisSizingMode = "AUTO";
-    buttonRow.itemSpacing = 16;
-    buttonRow.name = "Actions";
-    buttonRow.appendChild(createButton({ frame, profile }, "Launch Editor"));
-    const ghostButton = createButton({ frame, profile }, "Browse Playbook");
-    ghostButton.fills = [
-      {
-        type: "SOLID",
-        color: { r: 1, g: 1, b: 1 },
-        opacity: 0.08
-      }
-    ];
-    ghostButton.strokes = [
-      {
-        type: "SOLID",
-        color: toFigmaPaint(profile.colors[0]).color,
-        opacity: 0.4
-      }
-    ];
-    buttonRow.appendChild(ghostButton);
-    const contentFrame = figma.createFrame();
-    contentFrame.layoutMode = "VERTICAL";
-    contentFrame.primaryAxisAlignItems = "CENTER";
-    contentFrame.counterAxisAlignItems = "CENTER";
-    contentFrame.primaryAxisSizingMode = "AUTO";
-    contentFrame.counterAxisSizingMode = "FIXED";
-    contentFrame.resizeWithoutConstraints(frame.width - frame.paddingLeft - frame.paddingRight, frame.height - 260);
-    contentFrame.itemSpacing = 28;
-    contentFrame.name = "Hero Content";
-    contentFrame.fills = [];
-    contentFrame.strokes = [];
-    const visual = createImagePlaceholder(
-      { frame, profile },
-      {
-        width: frame.width - frame.paddingLeft - frame.paddingRight,
-        height: 360,
-        useAccent: true
-      }
-    );
-    visual.name = "Hero Visual";
-    contentFrame.appendChild(badge);
-    contentFrame.appendChild(heading);
-    contentFrame.appendChild(body);
-    contentFrame.appendChild(buttonRow);
-    contentFrame.appendChild(visual);
-    frame.appendChild(contentFrame);
-  },
-  social: ({ frame, profile }) => {
-    var _a2, _b, _c, _d, _e, _f, _g;
-    frame.name = "Social Spotlight";
-    frame.layoutMode = "VERTICAL";
-    frame.primaryAxisSizingMode = "FIXED";
-    frame.counterAxisSizingMode = "FIXED";
-    frame.primaryAxisAlignItems = "CENTER";
-    frame.counterAxisAlignItems = "CENTER";
-    frame.paddingTop = 64;
-    frame.paddingBottom = 64;
-    frame.paddingLeft = 48;
-    frame.paddingRight = 48;
-    frame.itemSpacing = 18;
-    frame.clipsContent = false;
-    applySurface(frame, profile.surface.background);
-    const topRow = figma.createFrame();
-    topRow.layoutMode = "HORIZONTAL";
-    topRow.primaryAxisSizingMode = "AUTO";
-    topRow.counterAxisSizingMode = "AUTO";
-    topRow.primaryAxisAlignItems = "SPACE_BETWEEN";
-    topRow.counterAxisAlignItems = "CENTER";
-    topRow.resizeWithoutConstraints(frame.width - frame.paddingLeft - frame.paddingRight, 48);
-    topRow.fills = [];
-    topRow.strokes = [];
-    const label = createText({ frame, profile }, "Weekly Spotlight", {
-      fontSize: 20,
-      textAutoResize: "WIDTH_AND_HEIGHT",
-      fontName: (_b = (_a2 = profile.typography.secondary) != null ? _a2 : profile.typography.primary) != null ? _b : { family: "Inter", style: "Medium" }
-    });
-    const badge = createText({ frame, profile }, profile.metadata.sampleCount > 1 ? "Multi-layout DNA" : "Precision match", {
-      fontSize: 12,
-      textAutoResize: "WIDTH_AND_HEIGHT",
-      letterSpacing: { unit: "PERCENT", value: 12 },
-      fills: [
-        toFigmaPaint(
-          (_d = (_c = profile.colors.find((color) => color.role === "accent")) != null ? _c : profile.colors[1]) != null ? _d : profile.colors[0]
-        )
-      ]
-    });
-    topRow.appendChild(label);
-    topRow.appendChild(badge);
-    const hero = createImagePlaceholder(
-      { frame, profile },
-      {
-        width: frame.width - frame.paddingLeft - frame.paddingRight,
-        height: 540,
-        useAccent: true
-      }
-    );
-    hero.name = "Hero Visual";
-    const title = createText({ frame, profile }, "Stories that travel further.", {
-      fontSize: 44,
-      lineHeight: { unit: "PERCENT", value: 120 },
-      textAutoResize: "WIDTH_AND_HEIGHT",
-      fontName: (_e = profile.typography.primary) != null ? _e : {
-        family: "Inter",
-        style: "Bold"
-      }
-    });
-    const caption = createText(
-      { frame, profile },
-      "Content blueprints engineered to protect voice, proportions, rhythm, and energy across every launch.",
-      {
-        fontSize: 18,
-        lineHeight: { unit: "PERCENT", value: 150 },
-        opacity: 0.78,
-        textAutoResize: "WIDTH_AND_HEIGHT",
-        fontName: (_g = (_f = profile.typography.secondary) != null ? _f : profile.typography.primary) != null ? _g : {
-          family: "Inter",
-          style: "Regular"
-        }
-      }
-    );
-    const metrics = figma.createFrame();
-    metrics.layoutMode = "HORIZONTAL";
-    metrics.primaryAxisSizingMode = "AUTO";
-    metrics.counterAxisSizingMode = "AUTO";
-    metrics.itemSpacing = 16;
-    metrics.fills = [];
-    metrics.strokes = [];
-    const statCard = (value, descriptor) => {
-      var _a3, _b2, _c2, _d2;
-      const card = figma.createFrame();
-      card.layoutMode = "VERTICAL";
-      card.primaryAxisSizingMode = "AUTO";
-      card.counterAxisSizingMode = "AUTO";
-      card.paddingTop = 18;
-      card.paddingBottom = 18;
-      card.paddingLeft = 20;
-      card.paddingRight = 20;
-      card.itemSpacing = 4;
-      card.cornerRadius = profile.cornerRadius;
-      card.fills = [
-        toFigmaPaint(
-          (_a3 = profile.colors.find((color) => color.role === "secondary")) != null ? _a3 : profile.colors[0]
-        )
-      ];
-      card.effects = profile.shadows.slice(0, 1);
-      const valueText = createText({ frame, profile }, value, {
-        fontSize: 28,
-        fontName: (_b2 = profile.typography.primary) != null ? _b2 : {
-          family: "Inter",
-          style: "Semi Bold"
-        },
-        fills: [
-          {
-            type: "SOLID",
-            color: { r: 1, g: 1, b: 1 }
-          }
-        ]
-      });
-      const descriptorText = createText({ frame, profile }, descriptor, {
-        fontSize: 11,
-        opacity: 0.76,
-        textAutoResize: "WIDTH_AND_HEIGHT",
-        fontName: (_d2 = (_c2 = profile.typography.secondary) != null ? _c2 : profile.typography.primary) != null ? _d2 : { family: "Inter", style: "Medium" },
-        fills: [
-          {
-            type: "SOLID",
-            color: { r: 1, g: 1, b: 1 }
-          }
-        ]
-      });
-      card.appendChild(valueText);
-      card.appendChild(descriptorText);
-      return card;
-    };
-    metrics.appendChild(statCard("+212%", "Lift in engagement"));
-    metrics.appendChild(statCard("38 hrs", "Design time saved"));
-    frame.appendChild(topRow);
-    frame.appendChild(hero);
-    frame.appendChild(title);
-    frame.appendChild(caption);
-    frame.appendChild(metrics);
-  },
-  announcement: ({ frame, profile }) => {
-    var _a2, _b, _c;
-    frame.name = "Launch Announcement";
-    frame.layoutMode = "VERTICAL";
-    frame.primaryAxisSizingMode = "FIXED";
-    frame.counterAxisSizingMode = "FIXED";
-    frame.primaryAxisAlignItems = "CENTER";
-    frame.counterAxisAlignItems = "CENTER";
-    frame.paddingTop = 72;
-    frame.paddingBottom = 72;
-    frame.paddingLeft = 64;
-    frame.paddingRight = 64;
-    frame.itemSpacing = 24;
-    frame.fills = [];
-    applySurface(frame, profile.surface.background);
-    const title = createText({ frame, profile }, "Ultra High Fidelity Kits", {
-      fontSize: 52,
-      textAutoResize: "WIDTH_AND_HEIGHT",
-      fontName: (_a2 = profile.typography.primary) != null ? _a2 : {
-        family: "Inter",
-        style: "Bold"
-      }
-    });
-    const tagline = createText({ frame, profile }, "Drop-and-go canvases engineered to mirror your brand voice.", {
-      fontSize: 20,
-      opacity: 0.76,
-      textAutoResize: "WIDTH_AND_HEIGHT",
-      fontName: (_c = (_b = profile.typography.secondary) != null ? _b : profile.typography.primary) != null ? _c : {
-        family: "Inter",
-        style: "Medium"
-      }
-    });
-    const divider = figma.createRectangle();
-    divider.resizeWithoutConstraints(frame.width - frame.paddingLeft - frame.paddingRight, 2);
-    divider.fills = [
-      {
-        type: "SOLID",
-        color: { r: 0, g: 0, b: 0 },
-        opacity: 0.08
-      }
-    ];
-    divider.cornerRadius = 2;
-    const points = figma.createFrame();
-    points.layoutMode = "VERTICAL";
-    points.primaryAxisSizingMode = "AUTO";
-    points.counterAxisSizingMode = "AUTO";
-    points.itemSpacing = 12;
-    points.fills = [];
-    const bullet = (titleText, description) => {
-      var _a3, _b2, _c2, _d, _e, _f;
-      const row = figma.createFrame();
-      row.layoutMode = "HORIZONTAL";
-      row.primaryAxisSizingMode = "AUTO";
-      row.counterAxisSizingMode = "AUTO";
-      row.counterAxisAlignItems = "STRETCH";
-      row.itemSpacing = 16;
-      row.fills = [];
-      const marker = figma.createEllipse();
-      marker.resize(12, 12);
-      marker.fills = [
-        toFigmaPaint(
-          (_b2 = (_a3 = profile.colors.find((color) => color.role === "accent")) != null ? _a3 : profile.colors[1]) != null ? _b2 : profile.colors[0]
-        )
-      ];
-      const column = figma.createFrame();
-      column.layoutMode = "VERTICAL";
-      column.primaryAxisSizingMode = "AUTO";
-      column.counterAxisSizingMode = "AUTO";
-      column.itemSpacing = 4;
-      column.fills = [];
-      const heading = createText({ frame, profile }, titleText, {
-        fontSize: 18,
-        fontName: (_d = (_c2 = profile.typography.secondary) != null ? _c2 : profile.typography.primary) != null ? _d : {
-          family: "Inter",
-          style: "Semi Bold"
-        }
-      });
-      const descriptionText = createText({ frame, profile }, description, {
-        fontSize: 14,
-        opacity: 0.7,
-        textAutoResize: "WIDTH_AND_HEIGHT",
-        fontName: (_f = (_e = profile.typography.secondary) != null ? _e : profile.typography.primary) != null ? _f : {
-          family: "Inter",
-          style: "Regular"
-        }
-      });
-      column.appendChild(heading);
-      column.appendChild(descriptionText);
-      row.appendChild(marker);
-      row.appendChild(column);
-      return row;
-    };
-    points.appendChild(bullet("Palette-perfect combos", "Automatically matched gradients, fills, and strokes."));
-    points.appendChild(bullet("Typography pairings", "Exact font stacks and hierarchy from your source layouts."));
-    points.appendChild(bullet("Systemized spacing", "Auto layout grids tuned to your brand proportions."));
-    frame.appendChild(title);
-    frame.appendChild(tagline);
-    frame.appendChild(divider);
-    frame.appendChild(points);
-    frame.appendChild(createButton({ frame, profile }, "Generate assets"));
-  },
-  email: ({ frame, profile }) => {
-    var _a2, _b, _c, _d;
-    frame.name = "Email Narrative";
-    frame.layoutMode = "VERTICAL";
-    frame.primaryAxisSizingMode = "FIXED";
-    frame.counterAxisSizingMode = "FIXED";
-    frame.primaryAxisAlignItems = "CENTER";
-    frame.counterAxisAlignItems = "CENTER";
-    frame.paddingTop = 48;
-    frame.paddingBottom = 48;
-    frame.paddingLeft = 48;
-    frame.paddingRight = 48;
-    frame.itemSpacing = 24;
-    applySurface(frame, profile.surface.background);
-    const card = figma.createFrame();
-    card.layoutMode = "VERTICAL";
-    card.primaryAxisSizingMode = "AUTO";
-    card.counterAxisSizingMode = "AUTO";
-    card.paddingTop = 48;
-    card.paddingBottom = 48;
-    card.paddingLeft = 56;
-    card.paddingRight = 56;
-    card.itemSpacing = 24;
-    card.cornerRadius = profile.cornerRadius;
-    card.fills = [
-      toFigmaPaint(
-        (_a2 = profile.colors.find((color) => color.role === "secondary")) != null ? _a2 : profile.colors[0]
-      )
-    ];
-    card.effects = profile.shadows.slice(0, 1);
-    const intro = createText({ frame, profile }, "Personalized dispatch", {
-      fontSize: 14,
-      opacity: 0.82,
-      textAutoResize: "WIDTH_AND_HEIGHT",
-      fills: [
-        {
-          type: "SOLID",
-          color: { r: 1, g: 1, b: 1 }
-        }
-      ]
-    });
-    const headline = createText({ frame, profile }, "The brand kit that builds itself.", {
-      fontSize: 48,
-      lineHeight: { unit: "PERCENT", value: 120 },
-      textAutoResize: "WIDTH_AND_HEIGHT",
-      fontName: (_b = profile.typography.primary) != null ? _b : {
-        family: "Inter",
-        style: "Bold"
-      },
-      fills: [
-        {
-          type: "SOLID",
-          color: { r: 1, g: 1, b: 1 }
-        }
-      ]
-    });
-    const paragraph = createText(
-      { frame, profile },
-      "Drop in 3\u20135 reference layouts and receive a ready-to-launch storytelling kit tuned to your brand\u2019s typography, palette, rhythm, and proportions.",
-      {
-        fontSize: 16,
-        lineHeight: { unit: "PERCENT", value: 155 },
-        opacity: 0.88,
-        textAutoResize: "WIDTH_AND_HEIGHT",
-        fontName: (_d = (_c = profile.typography.secondary) != null ? _c : profile.typography.primary) != null ? _d : {
-          family: "Inter",
-          style: "Regular"
-        },
-        fills: [
-          {
-            type: "SOLID",
-            color: { r: 1, g: 1, b: 1 }
-          }
-        ]
-      }
-    );
-    const grid = figma.createFrame();
-    grid.layoutMode = "HORIZONTAL";
-    grid.primaryAxisSizingMode = "AUTO";
-    grid.counterAxisSizingMode = "AUTO";
-    grid.itemSpacing = 16;
-    grid.fills = [];
-    const column = (titleText, bodyText) => {
-      var _a3, _b2, _c2, _d2;
-      const columnFrame = figma.createFrame();
-      columnFrame.layoutMode = "VERTICAL";
-      columnFrame.primaryAxisSizingMode = "AUTO";
-      columnFrame.counterAxisSizingMode = "AUTO";
-      columnFrame.itemSpacing = 8;
-      columnFrame.fills = [];
-      const columnTitle = createText({ frame, profile }, titleText, {
-        fontSize: 18,
-        textAutoResize: "WIDTH_AND_HEIGHT",
-        fontName: (_b2 = (_a3 = profile.typography.secondary) != null ? _a3 : profile.typography.primary) != null ? _b2 : {
-          family: "Inter",
-          style: "Semi Bold"
-        },
-        fills: [
-          {
-            type: "SOLID",
-            color: { r: 1, g: 1, b: 1 }
-          }
-        ]
-      });
-      const columnBody = createText({ frame, profile }, bodyText, {
-        fontSize: 14,
-        lineHeight: { unit: "PERCENT", value: 150 },
-        opacity: 0.82,
-        textAutoResize: "WIDTH_AND_HEIGHT",
-        fontName: (_d2 = (_c2 = profile.typography.secondary) != null ? _c2 : profile.typography.primary) != null ? _d2 : {
-          family: "Inter",
-          style: "Regular"
-        },
-        fills: [
-          {
-            type: "SOLID",
-            color: { r: 1, g: 1, b: 1 }
-          }
-        ]
-      });
-      columnFrame.appendChild(columnTitle);
-      columnFrame.appendChild(columnBody);
-      return columnFrame;
-    };
-    grid.appendChild(column("Palette memory", "Stores every dominant hue and applies it consistently."));
-    grid.appendChild(column("Typographic rhythm", "Reconstructs heading, lead, and caption pairings."));
-    grid.appendChild(column("Layout DNA", "Uses ratios from your samples to auto-compose hero, split, and grid canvases."));
-    card.appendChild(intro);
-    card.appendChild(headline);
-    card.appendChild(paragraph);
-    card.appendChild(grid);
-    card.appendChild(createButton({ frame, profile }, "Sync styles"));
-    frame.appendChild(card);
-  }
-};
-var learnBranding = (selection) => analyzeSelection(selection);
-var generateTemplates = async (profile, options) => {
-  await ensureFonts(profile);
-  const createdFrames = [];
-  let patternIndex = 0;
-  for (let i = 0; i < options.count; i++) {
-    if (!options.patterns.length) {
-      break;
-    }
-    const pattern = options.patterns[patternIndex % options.patterns.length];
-    patternIndex++;
-    const frame = figma.createFrame();
-    frame.resizeWithoutConstraints(
-      TEMPLATE_DIMENSIONS[pattern].width,
-      TEMPLATE_DIMENSIONS[pattern].height
-    );
-    frame.x = figma.viewport.center.x + i % 3 * (frame.width + 80);
-    frame.y = figma.viewport.center.y + Math.floor(i / 3) * (frame.height + 80);
-    await templateFactories[pattern]({
-      profile,
-      frame
-    });
-    createdFrames.push(frame);
-    figma.currentPage.appendChild(frame);
-  }
-  if (createdFrames.length) {
-    figma.currentPage.selection = createdFrames;
-    figma.viewport.scrollAndZoomIntoView(createdFrames);
-  }
-  return createdFrames;
-};
-
-// src/main.ts
-var DEFAULT_PATTERNS = ["hero", "social", "announcement"];
-var KNOWLEDGE_STORAGE_KEY = "brand-style-designer:knowledge";
-var TEMPLATE_DATA_KEY = "brand-style-designer:template";
-figma.showUI(__html__, { width: 420, height: 640 });
-var loadKnowledge = () => {
+  const bound = (_a = node.boundVariables) != null ? _a : {};
+  bound[property] = { type: "VARIABLE_ALIAS", id: variableId };
+  node.boundVariables = bound;
+}
+function getSnapshot(node) {
+  const raw = node.getPluginData(SNAPSHOT_KEY);
+  if (!raw) return {};
   try {
-    const raw = figma.root.getPluginData(KNOWLEDGE_STORAGE_KEY);
-    if (!raw) {
-      return null;
-    }
-    const parsed = JSON.parse(raw);
-    return {
-      ...parsed,
-      profile: mergeBrandingProfiles(null, parsed.profile)
-    };
-  } catch (e) {
-    return null;
-  }
-};
-var saveKnowledge = (data) => {
-  figma.root.setPluginData(KNOWLEDGE_STORAGE_KEY, JSON.stringify(data));
-};
-var readTemplateMetadata = (node) => {
-  try {
-    const raw = node.getPluginData(TEMPLATE_DATA_KEY);
-    return raw ? JSON.parse(raw) : {};
+    return JSON.parse(raw);
   } catch (e) {
     return {};
   }
-};
-var writeTemplateMetadata = (node, payload) => {
-  node.setPluginData(TEMPLATE_DATA_KEY, JSON.stringify(payload));
-};
-var knowledge = loadKnowledge();
-var _a;
-var currentProfile = (_a = knowledge == null ? void 0 : knowledge.profile) != null ? _a : null;
-var broadcastProfile = (profile, source) => {
-  var _a2, _b;
-  figma.ui.postMessage({
-    type: "branding-profile",
-    data: profile,
-    meta: {
-      learnCount: (_a2 = knowledge == null ? void 0 : knowledge.learnCount) != null ? _a2 : 0,
-      approvedCount: (_b = knowledge == null ? void 0 : knowledge.approvedTemplateIds.length) != null ? _b : 0
-    },
-    source
-  });
-};
-var registerProfile = (profile, approvedNodeIds, source) => {
-  var _a2, _b;
-  const mergedProfile = knowledge ? mergeBrandingProfiles(knowledge.profile, profile) : profile;
-  const approvedSet = new Set((_a2 = knowledge == null ? void 0 : knowledge.approvedTemplateIds) != null ? _a2 : []);
-  approvedNodeIds.forEach((id) => approvedSet.add(id));
-  const updatedKnowledge = {
-    profile: mergedProfile,
-    learnCount: ((_b = knowledge == null ? void 0 : knowledge.learnCount) != null ? _b : 0) + 1,
-    approvedTemplateIds: Array.from(approvedSet),
-    updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-  };
-  knowledge = updatedKnowledge;
-  currentProfile = mergedProfile;
-  saveKnowledge(updatedKnowledge);
-  broadcastProfile(mergedProfile, source);
-};
-if (currentProfile) {
-  broadcastProfile(currentProfile, "memory");
 }
-var handleLearnBranding = () => {
-  try {
-    const selection = figma.currentPage.selection.filter(
-      (node) => node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE" || node.type === "GROUP"
-    );
-    if (!selection.length) {
-      throw new Error("Please select at least one frame, component, or group to learn from.");
-    }
-    const learnedProfile = learnBranding(selection);
-    registerProfile(learnedProfile, [], "learn");
-    figma.notify("Brand style learned \u2728");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to learn from the current selection.";
-    figma.ui.postMessage({
-      type: "branding-error",
-      data: message
-    });
-    figma.notify(message, { timeout: 4e3 });
-  }
-};
-var handleGenerateTemplates = async (options) => {
-  if (!currentProfile) {
-    const message = "Learn the brand first to generate templates.";
-    figma.notify(message);
-    figma.ui.postMessage({
-      type: "branding-error",
-      data: message
-    });
-    return;
-  }
-  const patterns = options.patterns.length ? options.patterns : DEFAULT_PATTERNS;
-  const count = Math.max(1, Math.min(8, options.count || 3));
-  figma.ui.postMessage({ type: "generation-start" });
-  try {
-    const frames = await generateTemplates(currentProfile, { count, patterns });
-    const timestamp = (/* @__PURE__ */ new Date()).toISOString();
-    frames.forEach((frame) => {
-      var _a2;
-      writeTemplateMetadata(frame, {
-        generatedAt: timestamp,
-        approvalStatus: "pending",
-        iteration: (_a2 = knowledge == null ? void 0 : knowledge.learnCount) != null ? _a2 : 0
-      });
-    });
-    figma.ui.postMessage({ type: "generation-complete" });
-    figma.notify(`Generated ${count} branded template${count > 1 ? "s" : ""}.`);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to generate templates.";
-    figma.ui.postMessage({
-      type: "generation-error",
-      data: message
-    });
-    figma.notify(message, { timeout: 4e3 });
-  }
-};
-var handleApproveSelection = () => {
-  try {
-    const selection = figma.currentPage.selection.filter(
-      (node) => node.type === "FRAME" || node.type === "COMPONENT" || node.type === "INSTANCE" || node.type === "GROUP"
-    );
-    if (!selection.length) {
-      throw new Error("Select the branded templates you want to approve.");
-    }
-    const approvedProfile = learnBranding(selection);
-    registerProfile(
-      approvedProfile,
-      selection.map((node) => node.id),
-      "approval"
-    );
-    const timestamp = (/* @__PURE__ */ new Date()).toISOString();
-    selection.forEach((node) => {
-      if ("setPluginData" in node) {
-        const existing = readTemplateMetadata(node);
-        writeTemplateMetadata(node, {
-          ...existing,
-          approvalStatus: "approved",
-          approvedAt: timestamp
-        });
+function setSnapshot(node, snapshot) {
+  node.setPluginData(SNAPSHOT_KEY, JSON.stringify(snapshot));
+}
+function restoreProperty(node, property, value) {
+  switch (property) {
+    case "fills":
+    case "strokes":
+      if (value && typeof value === "string") {
+        setVariable3(node, property, value);
       }
-    });
-    figma.ui.postMessage({ type: "approval-complete" });
-    figma.notify("Selection approved. Future templates will follow this direction.");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to approve the current selection.";
-    figma.ui.postMessage({
-      type: "approval-error",
-      data: message
-    });
-    figma.notify(message, { timeout: 4e3 });
-  }
-};
-figma.on("selectionchange", () => {
-  figma.ui.postMessage({
-    type: "selection-change",
-    data: figma.currentPage.selection.length
-  });
-});
-figma.ui.onmessage = async (message) => {
-  switch (message.type) {
-    case "learn-branding":
-      handleLearnBranding();
       break;
-    case "generate-templates":
-      await handleGenerateTemplates(message.data);
+    case "lineHeight":
+      if (node.type === "TEXT" && typeof value === "number") {
+        node.lineHeight = { unit: "PERCENT", value };
+      }
+      break;
+    case "padding":
+      if ("paddingLeft" in node && value && typeof value === "object") {
+        const padding = value;
+        node.paddingLeft = padding.left;
+        node.paddingRight = padding.right;
+        node.paddingTop = padding.top;
+        node.paddingBottom = padding.bottom;
+      }
+      break;
+  }
+}
+function isSceneNode(node) {
+  return "visible" in node;
+}
+
+// src/code.ts
+var BRAND_KEY = "brandpilot:brand";
+var brand = null;
+var variables = null;
+var mode = "pro";
+var rationaleLog = [];
+var knowledge;
+figma.showUI(__html__, { width: 520, height: 640 });
+figma.ui.onmessage = async (rawMessage) => {
+  var _a;
+  switch (rawMessage.type) {
+    case "ready":
+      await boot();
+      break;
+    case "set-mode":
+      mode = rawMessage.mode;
+      emitState();
+      break;
+    case "import-brand":
+      await handleImport(rawMessage.payload);
+      break;
+    case "generate-layout":
+      await handleGenerate(rawMessage.pattern, rawMessage.variants);
+      break;
+    case "apply-brand":
+      await handleApply(rawMessage.scope, (_a = rawMessage.options) != null ? _a : { includeTypography: true, includeSpacing: true });
+      break;
+    case "record-feedback":
+      knowledge = await recordFeedback(rawMessage.key, rawMessage.positive);
+      emitOperationComplete("feedback", ["Feedback stored."]);
+      emitState("learn");
       break;
     case "approve-selection":
-      handleApproveSelection();
+      await handleApproval();
       break;
-    case "focus-patterns":
-      if (message.data && Array.isArray(message.data)) {
-        const nodes = message.data.map((id) => figma.getNodeById(id)).filter((node) => !!node);
-        if (nodes.length) {
-          figma.currentPage.selection = nodes;
-          figma.viewport.scrollAndZoomIntoView(nodes);
-        }
-      }
+    case "chat-preview":
+      await handleChatPreview(rawMessage.nodeIds, rawMessage.request);
+      break;
+    case "chat-apply":
+      await handleChatApply(rawMessage.nodeIds, rawMessage.request);
+      break;
+    case "chat-revert-last":
+      handleChatRevert();
+      break;
+    case "request-tutorial-assets":
+      emitTutorialAssets();
       break;
     default:
       break;
   }
+};
+figma.on("selectionchange", () => {
+  const count = figma.currentPage.selection.length;
+  postToUI({ type: "selection-change", count });
+});
+async function boot() {
+  knowledge = await loadSnapshot();
+  const cached = figma.root.getPluginData(BRAND_KEY);
+  if (cached) {
+    try {
+      brand = parseBrandJSON(cached);
+      variables = await ensureBrandResources(brand);
+    } catch (error) {
+      figma.notify(`Unable to restore brand: ${error.message}`);
+      brand = null;
+      variables = null;
+    }
+  }
+  emitState();
+}
+async function handleImport(payload) {
+  try {
+    const parsed = parseBrandJSON(payload);
+    const resourceMap = await ensureBrandResources(parsed);
+    brand = parsed;
+    variables = resourceMap;
+    figma.root.setPluginData(BRAND_KEY, JSON.stringify(parsed));
+    rationaleLog.unshift({
+      action: "Brand imported",
+      bullets: [
+        `Loaded brand \u201C${parsed.name}\u201D`,
+        `Mapped ${Object.keys(parsed.colors).length} color tokens`,
+        `Ensured font family ${parsed.typography.fontFamily}`
+      ]
+    });
+    emitOperationComplete("import-brand", rationaleLog[0].bullets);
+    emitState("learn");
+  } catch (error) {
+    emitOperationError("import-brand", error);
+  }
+}
+async function handleGenerate(pattern, variants) {
+  var _a, _b;
+  if (!brand || !variables) {
+    emitOperationError("generate-layout", new Error("Import a brand before generating layouts."));
+    return;
+  }
+  const created = [];
+  for (let index = 0; index < variants; index++) {
+    const node = await createLayout(pattern, {
+      brand,
+      variables,
+      mode,
+      variantIndex: index
+    });
+    created.push(node);
+  }
+  if (created.length) {
+    figma.currentPage.selection = created;
+    figma.viewport.scrollAndZoomIntoView(created);
+  }
+  const rationale = buildRationale({
+    component: pattern,
+    colors: {
+      fg: brand.colors.onSurface,
+      bg: brand.colors.surface,
+      brandTokens: Object.fromEntries(
+        Object.entries(variables.colorVariables).map(([token, variable]) => [token, variable.name])
+      )
+    },
+    type: {
+      family: brand.typography.fontFamily,
+      size: parseFloat((_a = brand.typography.scale[4]) != null ? _a : "24"),
+      lineHeight: MODE_PROFILE[mode].typeRatio * 100,
+      weight: (_b = Object.values(brand.typography.weights)[0]) != null ? _b : 400
+    },
+    spacing: { base: brand.spacing.base },
+    contrast: { ratio: 4.5, required: DESIGN_CANON.contrast.aa_normal },
+    changes: [
+      { what: "mode", to: mode },
+      { what: "variants", to: variants }
+    ]
+  });
+  rationaleLog.unshift({ action: `Generated ${pattern}`, bullets: rationale });
+  emitOperationComplete("generate-layout", rationale);
+}
+async function handleApply(scope, options) {
+  var _a, _b;
+  if (!brand || !variables) {
+    emitOperationError("apply-brand", new Error("Import a brand before applying."));
+    return;
+  }
+  const target = scope === "selection" && figma.currentPage.selection.length ? figma.currentPage.selection : figma.currentPage.children;
+  try {
+    await applyBrandToSelection(target, brand, variables, options);
+    const rationale = buildRationale({
+      component: "apply",
+      colors: {
+        fg: brand.colors.onSurface,
+        bg: brand.colors.surface,
+        brandTokens: Object.fromEntries(
+          Object.entries(variables.colorVariables).map(([token, variable]) => [token, variable.name])
+        )
+      },
+      type: {
+        family: brand.typography.fontFamily,
+        size: parseFloat((_a = brand.typography.scale[2]) != null ? _a : "16"),
+        lineHeight: MODE_PROFILE[mode].typeRatio * 100,
+        weight: (_b = Object.values(brand.typography.weights)[0]) != null ? _b : 400
+      },
+      spacing: { base: brand.spacing.base },
+      contrast: { ratio: 4.5, required: DESIGN_CANON.contrast.aa_normal },
+      changes: [{ what: "scope", to: scope }]
+    });
+    rationaleLog.unshift({ action: "Applied brand", bullets: rationale });
+    emitOperationComplete("apply-brand", rationale);
+  } catch (error) {
+    emitOperationError("apply-brand", error);
+  }
+}
+async function handleApproval() {
+  if (!brand || !variables) {
+    emitOperationError("approve-selection", new Error("Import a brand before approving layouts."));
+    return;
+  }
+  const selection = figma.currentPage.selection;
+  if (!selection.length) {
+    emitOperationError("approve-selection", new Error("Select generated frames to approve."));
+    return;
+  }
+  await applyBrandToSelection(selection, brand, variables, {
+    includeTypography: true,
+    includeSpacing: true
+  });
+  knowledge = await incrementApprovals();
+  emitOperationComplete("approve-selection", [
+    `Captured ${selection.length} approved node${selection.length > 1 ? "s" : ""}.`,
+    `Total approved selections: ${knowledge.selectionsApproved}`
+  ]);
+  emitState("approval");
+}
+async function handleChatPreview(nodeIds, request) {
+  var _a, _b;
+  if (!brand || !variables) {
+    emitOperationError("chat-preview", new Error("Import a brand before using chat."));
+    return;
+  }
+  const nodes = figma.currentPage.selection.filter(
+    (node) => "visible" in node
+  );
+  if (!nodes.length) {
+    emitOperationError("chat-preview", new Error("Select nodes to chat with."));
+    return;
+  }
+  const plan = buildChatPlan(nodes, request, brand, variables, mode);
+  const diff = plan.changes.map((change) => ({
+    nodeId: change.nodeId,
+    nodeName: change.nodeName,
+    property: change.property,
+    from: change.from,
+    to: change.to
+  }));
+  const rationale = buildRationale({
+    component: "chat",
+    colors: {
+      fg: brand.colors.onSurface,
+      bg: brand.colors.surface,
+      brandTokens: plan.rationaleTokens
+    },
+    type: {
+      family: brand.typography.fontFamily,
+      size: parseFloat((_a = brand.typography.scale[2]) != null ? _a : "16"),
+      lineHeight: MODE_PROFILE[mode].typeRatio * 100,
+      weight: (_b = Object.values(brand.typography.weights)[0]) != null ? _b : 400
+    },
+    spacing: { base: brand.spacing.base },
+    contrast: { ratio: 4.5, required: DESIGN_CANON.contrast.aa_normal },
+    changes: diff.map((item) => ({ what: item.property, from: item.from, to: item.to }))
+  });
+  plan.diff = diff;
+  pendingPlan = plan;
+  const selectionIds = nodes.map((node) => node.id);
+  postToUI({
+    type: "chat-preview",
+    nodeIds: selectionIds,
+    diff: { changes: diff },
+    rationale
+  });
+}
+var pendingPlan = null;
+async function handleChatApply(nodeIds, request) {
+  if (!brand || !variables) {
+    emitOperationError("chat-apply", new Error("Import a brand before using chat."));
+    return;
+  }
+  if (!pendingPlan) {
+    await handleChatPreview(nodeIds, request);
+  }
+  if (!pendingPlan) return;
+  const diffs = applyChatPlan(pendingPlan);
+  const rationale = pendingPlan.changes.map(
+    (change) => `Adjusted ${change.property} on ${change.nodeName}.`
+  );
+  rationaleLog.unshift({ action: "Chat apply", bullets: rationale });
+  const nodes = figma.currentPage.selection.map((node) => node.id);
+  postToUI({
+    type: "chat-applied",
+    nodeIds: nodes,
+    rationale
+  });
+  pendingPlan = null;
+}
+function handleChatRevert() {
+  const selection = figma.currentPage.selection.filter(
+    (node) => "visible" in node
+  );
+  const reverted = revertLastChat(selection);
+  emitOperationComplete("chat-revert-last", [`Reverted ${reverted} node${reverted === 1 ? "" : "s"}.`]);
+}
+function emitState(source = "memory") {
+  const state = {
+    brand,
+    variables: null,
+    mode,
+    rationaleLog,
+    knowledge
+  };
+  postToUI({
+    type: "init",
+    data: state
+  });
+  if (brand) {
+    postToUI({
+      type: "branding-profile",
+      data: brand,
+      meta: {
+        learnCount: Object.keys(knowledge.feedback).length,
+        approvedCount: knowledge.selectionsApproved
+      },
+      source
+    });
+  }
+}
+function emitOperationComplete(action, rationale) {
+  postToUI({
+    type: "operation-complete",
+    action,
+    rationale
+  });
+}
+function emitOperationError(action, error) {
+  const message = error instanceof Error ? error.message : String(error);
+  postToUI({
+    type: "operation-error",
+    action,
+    message
+  });
+  figma.notify(message, { timeout: 4e3 });
+}
+function emitTutorialAssets() {
+  postToUI({
+    type: "tutorial-assets",
+    sample: SAMPLE_BRAND
+  });
+}
+function postToUI(message) {
+  figma.ui.postMessage(message);
+}
+var SAMPLE_BRAND = {
+  name: "Acme Tools",
+  colors: {
+    primary: "#0055FF",
+    onPrimary: "#FFFFFF",
+    secondary: "#FFAA00",
+    surface: "#FFFFFF",
+    onSurface: "#111111"
+  },
+  typography: {
+    fontFamily: "Inter",
+    scale: ["12", "14", "16", "20", "24", "32", "40"],
+    weights: { regular: 400, medium: 500, bold: 700 }
+  },
+  spacing: { base: 8, scale: [4, 8, 12, 16, 24, 32] },
+  radii: { sm: 4, md: 8, lg: 12 },
+  logos: { primary: "https://example.com/logo.svg" }
 };

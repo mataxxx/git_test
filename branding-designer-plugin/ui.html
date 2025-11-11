@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Brand Style Designer</title>
+    <title>BrandPilot</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -14,54 +14,139 @@
       :root {
         color-scheme: light;
         font-family: 'Inter', sans-serif;
-        --bg: #ffffff;
-        --border: #e5e7eb;
+        --bg: #0f172a;
+        --panel: #ffffff;
+        --border: #e2e8f0;
         --accent: #2563eb;
-        --muted: #6b7280;
-        --success: #10b981;
+        --accent-muted: rgba(37, 99, 235, 0.08);
+        --muted: #64748b;
+        --success: #0ea5e9;
         --warning: #f59e0b;
+        --danger: #ef4444;
       }
 
       body {
         margin: 0;
-        background: var(--bg);
-        color: #111827;
+        background: radial-gradient(circle at 10% 10%, rgba(59, 130, 246, 0.12), transparent 60%),
+          radial-gradient(circle at 90% 20%, rgba(164, 219, 248, 0.18), transparent 65%), #f8fafc;
+        min-height: 100vh;
+        color: #0f172a;
       }
 
       .app {
         display: flex;
         flex-direction: column;
-        gap: 16px;
-        padding: 20px 20px 24px;
-        max-height: 600px;
-        min-width: 320px;
+        min-height: 100vh;
+      }
+
+      header {
+        padding: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
       }
 
       header h1 {
-        font-size: 16px;
+        font-size: 18px;
         font-weight: 600;
         margin: 0;
       }
 
       header p {
-        margin: 4px 0 0;
+        margin: 0;
         font-size: 12px;
         color: var(--muted);
       }
 
-      section {
+      nav {
+        display: flex;
+        gap: 4px;
+        padding: 0 24px 16px;
+      }
+
+      .tab {
+        flex: 1;
+        font-size: 12px;
+        font-weight: 600;
+        border: 1px solid transparent;
+        border-radius: 10px;
+        padding: 10px;
+        text-align: center;
+        background: rgba(15, 23, 42, 0.05);
+        color: #0f172a;
+        cursor: pointer;
+        transition: background 0.15s ease, transform 0.15s ease;
+      }
+
+      .tab.active {
+        background: var(--accent);
+        color: white;
+        box-shadow: 0 12px 25px rgba(37, 99, 235, 0.18);
+      }
+
+      .tab:hover {
+        transform: translateY(-1px);
+      }
+
+      main {
+        flex: 1;
+        display: flex;
+        overflow: hidden;
+      }
+
+      .panel {
+        flex: 1;
+        background: var(--panel);
+        border-top-left-radius: 20px;
+        border-top-right-radius: 20px;
         border: 1px solid var(--border);
-        border-radius: 12px;
+        border-bottom: none;
+        padding: 24px;
+        overflow-y: auto;
+        display: none;
+      }
+
+      .panel.active {
+        display: block;
+      }
+
+      .panel h2 {
+        margin: 0 0 12px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .panel section {
+        border: 1px solid var(--border);
+        border-radius: 16px;
         padding: 16px;
+        margin-bottom: 16px;
         display: flex;
         flex-direction: column;
         gap: 12px;
       }
 
-      section h2 {
-        font-size: 13px;
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 12px;
         font-weight: 600;
-        margin: 0;
+        color: #0f172a;
+      }
+
+      input[type='number'],
+      textarea {
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        font-family: inherit;
+        font-size: 12px;
+        resize: vertical;
+      }
+
+      textarea {
+        min-height: 80px;
       }
 
       button {
@@ -71,7 +156,7 @@
         gap: 8px;
         border: none;
         border-radius: 999px;
-        padding: 10px 16px;
+        padding: 10px 20px;
         font-size: 12px;
         font-weight: 600;
         cursor: pointer;
@@ -83,36 +168,34 @@
         color: white;
       }
 
-      button.ghost {
-        background: rgba(37, 99, 235, 0.1);
+      button.secondary {
+        background: var(--accent-muted);
+        color: var(--accent);
+      }
+
+      button.text {
+        background: transparent;
         color: var(--accent);
       }
 
       button:disabled {
         opacity: 0.4;
         cursor: not-allowed;
-        transform: none;
-        box-shadow: none;
-      }
-
-      button:hover:not(:disabled) {
-        transform: translateY(-1px);
-        box-shadow: 0 12px 24px rgba(37, 99, 235, 0.18);
       }
 
       .status {
-        border-radius: 10px;
-        padding: 10px 12px;
+        border-radius: 12px;
+        padding: 12px 14px;
         font-size: 12px;
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         gap: 8px;
         background: rgba(37, 99, 235, 0.08);
         color: var(--accent);
       }
 
       .status.success {
-        background: rgba(16, 185, 129, 0.1);
+        background: rgba(14, 165, 233, 0.12);
         color: var(--success);
       }
 
@@ -121,16 +204,26 @@
         color: var(--warning);
       }
 
+      .status.info {
+        background: rgba(15, 23, 42, 0.05);
+        color: var(--muted);
+      }
+
+      .brand-summary {
+        display: grid;
+        gap: 12px;
+      }
+
       .palette-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(48px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
         gap: 8px;
       }
 
       .swatch {
-        border-radius: 10px;
+        border-radius: 12px;
         border: 1px solid var(--border);
-        padding: 8px;
+        padding: 10px;
         display: flex;
         flex-direction: column;
         gap: 6px;
@@ -141,142 +234,294 @@
       .swatch-color {
         width: 100%;
         aspect-ratio: 1 / 1;
-        border-radius: 6px;
-        border: 1px solid rgba(17, 24, 39, 0.05);
+        border-radius: 8px;
+        border: 1px solid rgba(15, 23, 42, 0.1);
       }
 
-      .fonts-list {
+      .stack {
         display: flex;
         flex-direction: column;
-        gap: 6px;
-      }
-
-      .font-item {
-        border: 1px dashed var(--border);
-        border-radius: 10px;
-        padding: 10px;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        font-size: 11px;
-      }
-
-      .layout-toggles {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
         gap: 8px;
       }
 
-      .toggle {
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 10px;
+      .grid {
+        display: grid;
+        gap: 12px;
+      }
+
+      .grid.two {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .mode-group {
+        display: inline-flex;
+        border-radius: 999px;
+        padding: 4px;
+        background: rgba(15, 23, 42, 0.05);
+      }
+
+      .mode-button {
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: none;
+        background: transparent;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+        cursor: pointer;
+      }
+
+      .mode-button.active {
+        background: white;
+        color: var(--accent);
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.18);
+      }
+
+      .rationale-log {
         display: flex;
         flex-direction: column;
-        gap: 6px;
-        cursor: pointer;
-        transition: border-color 0.12s ease, background 0.12s ease;
+        gap: 12px;
+        max-height: 160px;
+        overflow-y: auto;
+        padding-right: 4px;
       }
 
-      .toggle.active {
-        border-color: var(--accent);
-        background: rgba(37, 99, 235, 0.09);
+      .rationale-item {
+        border-left: 3px solid var(--accent);
+        padding-left: 12px;
+        font-size: 11px;
       }
 
-      .toggle input {
-        appearance: none;
-        width: 16px;
-        height: 16px;
-        border-radius: 4px;
-        border: 2px solid var(--accent);
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        position: relative;
+      .rationale-item h4 {
+        margin: 0 0 4px;
+        font-size: 11px;
+        font-weight: 600;
       }
 
-      .toggle input:checked::after {
-        content: '';
-        width: 8px;
-        height: 8px;
-        display: block;
-        border-radius: 2px;
-        background: var(--accent);
-      }
-
-      label {
-        font-size: 12px;
+      .rationale-item ul {
+        margin: 0;
+        padding-left: 16px;
         display: flex;
         flex-direction: column;
         gap: 4px;
-        font-weight: 500;
       }
 
-      input[type='number'] {
-        font-family: inherit;
-        font-size: 12px;
-        padding: 8px 10px;
-        border-radius: 8px;
+      .token-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 8px;
+        border-radius: 999px;
         border: 1px solid var(--border);
+        background: rgba(15, 23, 42, 0.06);
+        font-size: 10px;
+        font-weight: 600;
+      }
+
+      .diff-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 11px;
+        padding: 0;
+        margin: 0;
+        list-style: none;
+      }
+
+      .diff-item {
+        border: 1px dashed var(--border);
+        border-radius: 10px;
+        padding: 8px 10px;
       }
 
       footer {
+        padding: 16px 24px;
         display: flex;
         justify-content: space-between;
         align-items: center;
         font-size: 10px;
         color: var(--muted);
       }
+
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
     </style>
   </head>
   <body>
     <div class="app">
       <header>
-        <h1>Brand Style Designer</h1>
-        <p>Learn your brand's DNA from a handful of layouts and generate fresh templates that match.</p>
+        <h1>BrandPilot</h1>
+        <p>Canon-enforced layouts, accessible tokens, rationale for every decision.</p>
       </header>
-
-      <section>
-        <h2>1. Learn from examples</h2>
-        <p class="status warning" id="status">
-          Select 1–5 frames that reflect the brand, then click learn.
-        </p>
-        <button class="primary" id="learnButton">Learn from selection</button>
-      </section>
-
-      <section>
-        <h2>2. Brand DNA</h2>
-        <div id="brandSummary">
-          <p class="status">Brand summary will appear here after learning.</p>
+      <nav>
+        <button class="tab active" data-tab="brand">Brand</button>
+        <button class="tab" data-tab="generate">Generate</button>
+        <button class="tab" data-tab="apply">Apply</button>
+        <button class="tab" data-tab="learn">Learn</button>
+        <button class="tab" data-tab="tutorial">Tutorial</button>
+        <button class="tab" data-tab="chat">Chat</button>
+      </nav>
+      <main>
+        <div class="panel active" id="brandPanel">
+          <section>
+            <h2>Import brand JSON</h2>
+            <label>
+              Paste or drop JSON
+              <textarea id="brandInput" placeholder='{"name":"Acme","colors":{"primary":"#0055FF",...}}'></textarea>
+            </label>
+            <div class="stack">
+              <button class="primary" id="importBrandButton">Import brand</button>
+              <button class="text" id="loadSampleBrand">Load sample brand</button>
+            </div>
+            <p class="status info" id="brandStatus">
+              Brand tokens map to variables; fonts load automatically. No data leaves this file.
+            </p>
+          </section>
+          <section>
+            <h2>Brand summary</h2>
+            <div id="brandSummary" class="brand-summary">
+              <p class="status info">Import a brand to see palette, typography, spacing, and rationale.</p>
+            </div>
+          </section>
         </div>
-      </section>
-
-      <section>
-        <h2>3. Generate templates</h2>
-        <label>
-          How many templates?
-          <input type="number" id="countInput" value="3" min="1" max="6" />
-        </label>
-        <div class="layout-toggles" id="patternToggleGroup">
-          <!-- Layout toggles injected via script -->
+        <div class="panel" id="generatePanel">
+          <section>
+            <h2>Mode</h2>
+            <div class="mode-group">
+              <button class="mode-button active" data-mode="conservative">Conservative</button>
+              <button class="mode-button" data-mode="pro">Pro</button>
+              <button class="mode-button" data-mode="creative">Creative</button>
+            </div>
+            <p class="status info" id="modeStatus">
+              Conservative keeps fonts & radii tight. Creative explores within canon guardrails.
+            </p>
+          </section>
+          <section>
+            <h2>Generate layout</h2>
+            <label>
+              Layout type
+              <select id="layoutPattern">
+                <option value="hero">Hero</option>
+                <option value="card">Feature Card</option>
+                <option value="social">Social Post</option>
+              </select>
+            </label>
+            <label>
+              Variants
+              <input type="number" id="variantCount" value="1" min="1" max="3" />
+            </label>
+            <button class="primary" id="generateButton" disabled>Generate layouts</button>
+          </section>
+          <section>
+            <h2>Design rationale</h2>
+            <div class="rationale-log" id="rationaleLog">
+              <div class="status info">Actions and explanations appear here once generated.</div>
+            </div>
+          </section>
         </div>
-        <button class="ghost" id="generateButton" disabled>Generate branded templates</button>
-      </section>
-
-      <section>
-        <h2>4. Approve & refine</h2>
-        <p class="status" id="approvalStatus">
-          After generation, select the layouts that feel on-brand and approve them to keep improving suggestions.
-        </p>
-        <button class="ghost" id="approveButton" disabled>Approve selection for future templates</button>
-      </section>
-
+        <div class="panel" id="applyPanel">
+          <section>
+            <h2>Apply brand</h2>
+            <label>
+              Scope
+              <select id="applyScope">
+                <option value="selection">Selection</option>
+                <option value="page">Entire page</option>
+              </select>
+            </label>
+            <div class="grid two">
+              <label>
+                <span>Typography</span>
+                <input type="checkbox" id="applyTypography" checked />
+              </label>
+              <label>
+                <span>Spacing</span>
+                <input type="checkbox" id="applySpacing" checked />
+              </label>
+            </div>
+            <button class="primary" id="applyBrandButton" disabled>Apply brand tokens</button>
+            <p class="status info">
+              Binding uses variables first; re-applying is idempotent and won’t duplicate tokens.
+            </p>
+          </section>
+        </div>
+        <div class="panel" id="learnPanel">
+          <section>
+            <h2>Feedback</h2>
+            <div class="stack">
+              <label>
+                Token pairing
+                <input type="text" id="feedbackKey" placeholder="color.primary + color.surface" />
+              </label>
+              <div class="grid two">
+                <button class="secondary" id="thumbsUp">👍 Keep more like this</button>
+                <button class="secondary" id="thumbsDown">👎 Avoid this combination</button>
+              </div>
+            </div>
+            <p class="status info" id="feedbackStatus">
+              Feedback updates Bayesian counts stored locally; helps steer future layouts.
+            </p>
+          </section>
+          <section>
+            <h2>Learning snapshot</h2>
+            <div id="learningSummary" class="status info">
+              No feedback captured yet. Start approving layouts or recording preferences.
+            </div>
+          </section>
+        </div>
+        <div class="panel" id="tutorialPanel">
+          <section>
+            <h2>Quick start</h2>
+            <ol style="margin:0;padding-left:18px;font-size:12px;color:#0f172a;display:flex;flex-direction:column;gap:6px;">
+              <li>Download the sample JSON or paste your own tokens.</li>
+              <li>Import and ensure the palette & typography look correct.</li>
+              <li>Generate hero/card/social layouts in your chosen mode.</li>
+              <li>Approve the layouts you love—BrandPilot keeps learning.</li>
+              <li>Use Chat to nudge selected nodes with safe, explainable updates.</li>
+            </ol>
+          </section>
+          <section>
+            <h2>Privacy & support</h2>
+            <p class="status info">
+              Brand data never leaves the Figma file. All learning persists in plugin data/client storage only.
+            </p>
+            <p style="font-size:12px;">
+              Need help or want to share ideas?
+              <a href="https://brandpilot.support" target="_blank" rel="noreferrer">Contact support</a>
+            </p>
+          </section>
+        </div>
+        <div class="panel" id="chatPanel">
+          <section>
+            <h2>Element chat</h2>
+            <p class="status info" id="chatStatus">
+              Select nodes on the canvas, describe the change (e.g. “tighten line-height” or “use secondary
+              color”), then preview before applying.
+            </p>
+            <label>
+              Request
+              <textarea id="chatInput" placeholder="Try a secondary color and tighten line-height"></textarea>
+            </label>
+            <div class="grid two">
+              <button class="secondary" id="chatPreviewButton">Preview</button>
+              <button class="primary" id="chatApplyButton">Apply safely</button>
+            </div>
+            <button class="text" id="chatRevertButton">Revert last BrandPilot chat change</button>
+          </section>
+          <section>
+            <h2>Diff preview</h2>
+            <ul id="chatDiff" class="diff-list">
+              <li class="status info">Preview shows planned changes with rationale before apply.</li>
+            </ul>
+          </section>
+        </div>
+      </main>
       <footer>
-        <span>v0.1.0</span>
-        <span>Crafted for Figma</span>
+        <span>BrandPilot · Canon-first design assistant</span>
+        <span id="selectionStatus">No selection</span>
       </footer>
     </div>
-
     <script src="dist/ui.js"></script>
   </body>
 </html>

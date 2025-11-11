@@ -1,6 +1,6 @@
 {
-  "name": "Brand Style Designer",
-  "id": "com.cursor.brand-style-designer",
+  "name": "BrandPilot",
+  "id": "com.cursor.brandpilot",
   "api": "1.0.0",
   "main": "dist/code.js",
   "ui": "ui.html",
@@ -10,7 +10,13 @@
   "relaunchButtons": [
     {
       "command": "open",
-      "name": "Brand Style Designer"
+      "name": "BrandPilot"
+    }
+  ],
+  "menu": [
+    {
+      "name": "BrandPilot",
+      "command": "open"
     }
   ]
 }

@@ -1,300 +1,312 @@
 "use strict";
 (() => {
-  // src/ui/ui.ts
-  var patterns = [
-    {
-      id: "hero",
-      name: "Hero Banner",
-      description: "Full-width launch or campaign hero for web"
-    },
-    {
-      id: "social",
-      name: "Social Spotlight",
-      description: "Square/portrait storytelling for social feeds"
-    },
-    {
-      id: "announcement",
-      name: "Announcement",
-      description: "Wide landscape layout for product drops"
-    },
-    {
-      id: "email",
-      name: "Email Narrative",
-      description: "Editorial block for lifecycle and newsletters"
-    }
-  ];
-  var learnButton = document.getElementById("learnButton");
-  var generateButton = document.getElementById("generateButton");
-  var statusElement = document.getElementById("status");
+  // src/ui/index.ts
+  var tabs = Array.from(document.querySelectorAll(".tab"));
+  var panels = /* @__PURE__ */ new Map([
+    ["brand", document.getElementById("brandPanel")],
+    ["generate", document.getElementById("generatePanel")],
+    ["apply", document.getElementById("applyPanel")],
+    ["learn", document.getElementById("learnPanel")],
+    ["tutorial", document.getElementById("tutorialPanel")],
+    ["chat", document.getElementById("chatPanel")]
+  ]);
+  var brandInput = document.getElementById("brandInput");
+  var importBrandButton = document.getElementById("importBrandButton");
+  var loadSampleBrandButton = document.getElementById("loadSampleBrand");
+  var brandStatus = document.getElementById("brandStatus");
   var brandSummary = document.getElementById("brandSummary");
-  var countInput = document.getElementById("countInput");
-  var patternToggleGroup = document.getElementById("patternToggleGroup");
+  var modeButtons = Array.from(document.querySelectorAll(".mode-button"));
+  var modeStatus = document.getElementById("modeStatus");
+  var layoutPattern = document.getElementById("layoutPattern");
+  var variantCount = document.getElementById("variantCount");
+  var generateButton = document.getElementById("generateButton");
+  var rationaleLog = document.getElementById("rationaleLog");
+  var applyScope = document.getElementById("applyScope");
+  var applyTypography = document.getElementById("applyTypography");
+  var applySpacing = document.getElementById("applySpacing");
+  var applyBrandButton = document.getElementById("applyBrandButton");
+  var feedbackKeyInput = document.getElementById("feedbackKey");
+  var thumbsUpButton = document.getElementById("thumbsUp");
+  var thumbsDownButton = document.getElementById("thumbsDown");
+  var feedbackStatus = document.getElementById("feedbackStatus");
+  var learningSummary = document.getElementById("learningSummary");
+  var chatStatus = document.getElementById("chatStatus");
+  var chatInput = document.getElementById("chatInput");
+  var chatPreviewButton = document.getElementById("chatPreviewButton");
+  var chatApplyButton = document.getElementById("chatApplyButton");
+  var chatRevertButton = document.getElementById("chatRevertButton");
+  var chatDiff = document.getElementById("chatDiff");
+  var brandPanelStatus = document.getElementById("status");
+  var selectionStatus = document.getElementById("selectionStatus");
   var approveButton = document.getElementById("approveButton");
-  var approvalStatus = document.getElementById("approvalStatus");
-  var isGenerating = false;
-  var currentProfile = null;
-  var knowledgeMeta = { learnCount: 0, approvedCount: 0 };
+  var currentBrand = null;
+  var currentMode = "conservative";
   var selectionCount = 0;
-  var selectedPatterns = /* @__PURE__ */ new Set(["hero", "social", "announcement"]);
-  var sendMessage = (payload) => {
-    parent.postMessage({ pluginMessage: payload }, "*");
-  };
-  var updateButtons = () => {
-    learnButton.disabled = isGenerating;
-    generateButton.disabled = isGenerating || !currentProfile;
-    if (approveButton) {
-      approveButton.disabled = isGenerating || !currentProfile || selectionCount === 0;
-    }
-  };
-  var setStatus = (message, tone = "default") => {
-    statusElement.textContent = "";
-    statusElement.className = `status${tone === "success" ? " success" : tone === "warning" ? " warning" : ""}`;
-    statusElement.textContent = message;
-  };
-  var renderBrandSummary = (profile, meta) => {
-    const primary = profile.typography.primary;
-    const secondary = profile.typography.secondary;
-    const uniqueFonts = profile.typography.all.slice(0, 4);
-    const colorSwatches = profile.colors.map(
-      (color) => `
-      <div class="swatch">
-        <div class="swatch-color" style="background:${color.hex}"></div>
-        <span>${color.role}</span>
-        <span>${color.hex}</span>
-      </div>`
-    ).join("");
-    const fonts = uniqueFonts.map(
-      (font) => `
-      <div class="font-item">
-        <strong>${font.family}</strong>
-        <span>${font.style}</span>
-      </div>`
-    ).join("");
-    const tokens = `
-    <div class="status success">
-      Learned from ${profile.metadata.sampleCount} sample${profile.metadata.sampleCount > 1 ? "s" : ""}.
-    </div>
-      <div class="status" style="background:rgba(37,99,235,0.06);color:#1D4ED8;">
-        ${profile.narrative.personality}
-      </div>
-    <div style="display:flex;gap:12px;font-size:10px;color:#6B7280;flex-wrap:wrap;">
-      <span>Learning passes: <strong>${meta.learnCount}</strong></span>
-      <span>Approved templates: <strong>${meta.approvedCount}</strong></span>
-    </div>
-    <div>
-      <h3 style="margin:12px 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#6B7280;">Palette</h3>
-      <div class="palette-grid">${colorSwatches}</div>
-    </div>
-    <div>
-      <h3 style="margin:12px 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#6B7280;">Typography</h3>
-      <div class="fonts-list">
-        ${primary ? `<div class="font-item"><strong>Primary</strong><span>${primary.family} \xB7 ${primary.style}</span></div>` : ""}
-        ${secondary ? `<div class="font-item"><strong>Secondary</strong><span>${secondary.family} \xB7 ${secondary.style}</span></div>` : ""}
-        ${fonts}
-      </div>
-    </div>
-    <div>
-      <h3 style="margin:12px 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#6B7280;">DNA Tokens</h3>
-      <ul style="margin:0;padding-left:18px;font-size:11px;color:#374151;display:flex;flex-direction:column;gap:6px;">
-        <li>Corner radius ~ <strong>${profile.cornerRadius}px</strong></li>
-        <li>Stroke weight ~ <strong>${profile.strokeWeight}px</strong></li>
-        <li>Shadow styles captured: <strong>${profile.shadows.length}</strong></li>
-          <li>Tone cues: <strong>${profile.narrative.toneDescriptions.join(", ")}</strong></li>
-      </ul>
-    </div>
-      <div>
-        <h3 style="margin:12px 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#6B7280;">Highlights</h3>
-        <ul style="margin:0;padding-left:18px;font-size:11px;color:#047857;display:flex;flex-direction:column;gap:6px;">
-          ${profile.insights.highlights.length ? profile.insights.highlights.map((item) => `<li>${item}</li>`).join("") : "<li>Provide more branded elements to surface strengths.</li>"}
-        </ul>
-      </div>
-      <div>
-        <h3 style="margin:12px 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:#6B7280;">Opportunities</h3>
-        <ul style="margin:0;padding-left:18px;font-size:11px;color:#B45309;display:flex;flex-direction:column;gap:6px;">
-          ${profile.insights.improvementIdeas.length ? profile.insights.improvementIdeas.map((item) => `<li>${item}</li>`).join("") : "<li>Samples already cover a complete system\u2014ready to generate.</li>"}
-        </ul>
-      </div>
-  `;
-    brandSummary.innerHTML = tokens;
-  };
-  var renderPatternToggles = () => {
-    patternToggleGroup.innerHTML = "";
-    patterns.forEach((pattern) => {
-      const toggle = document.createElement("div");
-      toggle.className = `toggle${selectedPatterns.has(pattern.id) ? " active" : ""}`;
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.checked = selectedPatterns.has(pattern.id);
-      input.id = `pattern-${pattern.id}`;
-      const label = document.createElement("label");
-      label.setAttribute("for", input.id);
-      label.style.fontSize = "11px";
-      label.style.fontWeight = "600";
-      label.textContent = pattern.name;
-      const description = document.createElement("span");
-      description.style.fontSize = "10px";
-      description.style.color = "#6B7280";
-      description.textContent = pattern.description;
-      toggle.appendChild(input);
-      toggle.appendChild(label);
-      toggle.appendChild(description);
-      toggle.addEventListener("click", (event) => {
-        if (event.target.tagName === "INPUT") {
-          return;
-        }
-        input.checked = !input.checked;
-        input.dispatchEvent(new Event("change"));
-      });
-      input.addEventListener("change", () => {
-        if (input.checked) {
-          selectedPatterns.add(pattern.id);
-        } else {
-          selectedPatterns.delete(pattern.id);
-        }
-        if (!selectedPatterns.size) {
-          selectedPatterns.add(pattern.id);
-          input.checked = true;
-        }
-        toggle.classList.toggle("active", input.checked);
-      });
-      patternToggleGroup.appendChild(toggle);
+  generateButton.disabled = true;
+  applyBrandButton.disabled = true;
+  chatPreviewButton.disabled = true;
+  chatApplyButton.disabled = true;
+  chatRevertButton.disabled = true;
+  if (approveButton) approveButton.disabled = true;
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const target = tab.dataset.tab;
+      if (!target) return;
+      activateTab(target);
     });
-  };
-  learnButton.addEventListener("click", () => {
-    setStatus("Learning from selection\u2026", "default");
-    sendMessage({ type: "learn-branding" });
+  });
+  function activateTab(target) {
+    tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.tab === target));
+    panels.forEach((panel, id) => panel.classList.toggle("active", id === target));
+  }
+  modeButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      modeButtons.forEach((btn) => btn.classList.toggle("active", btn === button));
+      currentMode = button.dataset.mode;
+      postToPlugin({ type: "set-mode", mode: currentMode });
+      modeStatus.textContent = describeMode(currentMode);
+    });
+  });
+  importBrandButton.addEventListener("click", () => {
+    if (!brandInput.value.trim()) {
+      updateStatus(brandStatus, "Paste brand JSON before importing.", "warning");
+      return;
+    }
+    postToPlugin({ type: "import-brand", payload: brandInput.value });
+    updateStatus(brandStatus, "Importing brand\u2026", "info");
+  });
+  loadSampleBrandButton.addEventListener("click", () => {
+    postToPlugin({ type: "request-tutorial-assets" });
   });
   generateButton.addEventListener("click", () => {
-    const count = Math.max(1, Math.min(8, parseInt(countInput.value, 10) || 3));
-    countInput.value = String(count);
-    isGenerating = true;
-    updateButtons();
-    generateButton.textContent = "Generating\u2026";
-    sendMessage({
-      type: "generate-templates",
-      data: {
-        count,
-        patterns: Array.from(selectedPatterns)
+    const variants = Math.max(1, Math.min(3, parseInt(variantCount.value, 10) || 1));
+    postToPlugin({
+      type: "generate-layout",
+      pattern: layoutPattern.value,
+      mode: currentMode,
+      variants
+    });
+    updateStatus(modeStatus, "Generating layouts\u2026", "info");
+    generateButton.disabled = true;
+  });
+  applyBrandButton.addEventListener("click", () => {
+    postToPlugin({
+      type: "apply-brand",
+      scope: applyScope.value,
+      options: {
+        includeTypography: applyTypography.checked,
+        includeSpacing: applySpacing.checked
       }
     });
+    applyBrandButton.disabled = true;
   });
+  thumbsUpButton.addEventListener("click", () => recordFeedback(true));
+  thumbsDownButton.addEventListener("click", () => recordFeedback(false));
+  function recordFeedback(positive) {
+    const key = feedbackKeyInput.value.trim();
+    if (!key) {
+      updateStatus(feedbackStatus, "Describe the token pair before recording feedback.", "warning");
+      return;
+    }
+    postToPlugin({ type: "record-feedback", key, positive });
+    updateStatus(feedbackStatus, positive ? "Noted: Boosting this combination." : "Noted: Avoiding this pairing.", "success");
+  }
   if (approveButton) {
     approveButton.addEventListener("click", () => {
-      if (approveButton.disabled) {
-        return;
-      }
-      if (approvalStatus) {
-        approvalStatus.className = "status";
-        approvalStatus.textContent = "Reinforcing brand with approved selection\u2026";
-      }
-      sendMessage({ type: "approve-selection" });
+      postToPlugin({ type: "approve-selection" });
+      approveButton.disabled = true;
     });
+  }
+  chatPreviewButton.addEventListener("click", () => {
+    const request = chatInput.value.trim();
+    if (!request) {
+      updateStatus(chatStatus, "Describe the change you want before previewing.", "warning");
+      return;
+    }
+    postToPlugin({
+      type: "chat-preview",
+      nodeIds: getSelectionIds(),
+      request
+    });
+    updateStatus(chatStatus, "Preparing safe preview\u2026", "info");
+  });
+  chatApplyButton.addEventListener("click", () => {
+    const request = chatInput.value.trim();
+    if (!request) {
+      updateStatus(chatStatus, "Describe the change you want before applying.", "warning");
+      return;
+    }
+    postToPlugin({
+      type: "chat-apply",
+      nodeIds: getSelectionIds(),
+      request
+    });
+    chatApplyButton.disabled = true;
+  });
+  chatRevertButton.addEventListener("click", () => {
+    postToPlugin({ type: "chat-revert-last" });
+  });
+  function describeMode(mode) {
+    switch (mode) {
+      case "conservative":
+        return "Conservative mode: 1 family, tight type ratio, minimal exploration.";
+      case "pro":
+        return "Pro mode: 2 families, balanced ratio, measured exploration.";
+      case "creative":
+        return "Creative mode: Up to 3 families, generous ratio, bold exploration within canon.";
+    }
+  }
+  function renderBrandSummary(brand) {
+    currentBrand = brand;
+    generateButton.disabled = false;
+    applyBrandButton.disabled = false;
+    chatApplyButton.disabled = selectionCount === 0;
+    chatPreviewButton.disabled = selectionCount === 0;
+    if (approveButton) approveButton.disabled = selectionCount === 0;
+    const palette = Object.entries(brand.colors).map(
+      ([token, hex]) => `
+      <div class="swatch">
+        <div class="swatch-color" style="background:${hex}"></div>
+        <span>${token}</span>
+        <span>${hex}</span>
+      </div>`
+    ).join("");
+    const typography = `
+    <div class="stack">
+      <span class="token-pill">Font: ${brand.typography.fontFamily}</span>
+      <span class="token-pill">Scale: ${brand.typography.scale.join(", ")}</span>
+      <span class="token-pill">Weights: ${Object.keys(brand.typography.weights).join(", ")}</span>
+    </div>
+  `;
+    const spacing = `
+    <div class="stack">
+      <span class="token-pill">Spacing base: ${brand.spacing.base}px</span>
+      <span class="token-pill">Spacing scale: ${brand.spacing.scale.join(", ")}</span>
+      <span class="token-pill">Radii: ${Object.entries(brand.radii).map(([k, v]) => `${k}:${v}`).join(", ")}</span>
+    </div>
+  `;
+    brandSummary.innerHTML = `
+    <div class="palette-grid">${palette}</div>
+    ${typography}
+    ${spacing}
+  `;
+    updateStatus(brandStatus, `Loaded tokens for ${brand.name}.`, "success");
+  }
+  function appendRationale(action, bullets) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "rationale-item";
+    const title = document.createElement("h4");
+    title.textContent = action;
+    wrapper.appendChild(title);
+    const list = document.createElement("ul");
+    bullets.forEach((bullet) => {
+      const li = document.createElement("li");
+      li.textContent = bullet;
+      list.appendChild(li);
+    });
+    wrapper.appendChild(list);
+    rationaleLog.prepend(wrapper);
+  }
+  function updateLearningSummary(snapshot) {
+    const entries = Object.entries(snapshot.feedback);
+    if (!entries.length && snapshot.selectionsApproved === 0) {
+      learningSummary.textContent = "No feedback captured yet. Start approving layouts or recording preferences.";
+      return;
+    }
+    const feedbackLines = entries.map(([key, stat]) => `${key}: \u{1F44D} ${stat.positive} \xB7 \u{1F44E} ${stat.negative}`).join("<br />");
+    learningSummary.innerHTML = `
+    Approved selections: <strong>${snapshot.selectionsApproved}</strong><br />
+    ${feedbackLines || "No token feedback yet."}
+  `;
+  }
+  function updateChatDiff(diff) {
+    if (!diff || !diff.changes.length) {
+      chatDiff.innerHTML = '<li class="status info">No safe changes detected for the current request.</li>';
+      return;
+    }
+    chatDiff.innerHTML = diff.changes.map(
+      (item) => `
+        <li class="diff-item">
+          <strong>${item.nodeName}</strong>: ${item.property} \u2192 ${formatValue(item.to)}
+        </li>
+      `
+    ).join("");
+  }
+  function formatValue(value) {
+    if (typeof value === "object") {
+      return JSON.stringify(value);
+    }
+    return String(value);
+  }
+  function updateSelection(count) {
+    selectionCount = count;
+    selectionStatus.textContent = count ? `${count} node${count === 1 ? "" : "s"} selected` : "No selection";
+    chatPreviewButton.disabled = count === 0;
+    chatApplyButton.disabled = count === 0;
+    chatRevertButton.disabled = count === 0;
+    if (approveButton) approveButton.disabled = !currentBrand || count === 0;
+  }
+  function updateStatus(element, message, tone) {
+    element.className = `status ${tone}`;
+    element.textContent = message;
+  }
+  function getSelectionIds() {
+    return [];
   }
   window.onmessage = (event) => {
     const message = event.data.pluginMessage;
-    if (!message) {
-      return;
-    }
+    if (!message) return;
     switch (message.type) {
+      case "init":
+        if (message.data.brand) {
+          renderBrandSummary(message.data.brand);
+        }
+        if (message.data.knowledge) {
+          updateLearningSummary({
+            selectionsApproved: message.data.knowledge.selectionsApproved,
+            feedback: message.data.knowledge.feedback
+          });
+        }
+        break;
       case "branding-profile":
-        currentProfile = message.data;
-        knowledgeMeta = message.meta;
-        isGenerating = false;
-        renderBrandSummary(message.data, knowledgeMeta);
-        generateButton.textContent = "Generate branded templates";
-        updateButtons();
-        if (message.source === "memory") {
-          setStatus("Brand DNA restored from previous sessions. Ready to generate.", "success");
-        } else if (message.source === "approval") {
-          setStatus("Brand DNA reinforced with your approved templates.", "success");
-          if (approvalStatus) {
-            approvalStatus.className = "status success";
-            approvalStatus.textContent = "Selection approved. The plugin will favour this style going forward.";
-          }
-        } else {
-          setStatus("Brand DNA captured. Ready to generate.", "success");
-          if (approvalStatus && selectionCount === 0) {
-            approvalStatus.className = "status";
-            approvalStatus.textContent = "Select generated frames you trust, then click approve to keep training.";
-          }
-        }
-        generateButton.textContent = "Generate branded templates";
-        break;
-      case "branding-error":
-        currentProfile = null;
-        isGenerating = false;
-        brandSummary.innerHTML = '<p class="status warning">We could not learn from the selection. Try selecting branded frames.</p>';
-        setStatus(message.data, "warning");
-        generateButton.textContent = "Generate branded templates";
-        if (approvalStatus) {
-          approvalStatus.className = "status warning";
-          approvalStatus.textContent = "Learn the brand before approving templates.";
-        }
-        updateButtons();
-        break;
-      case "generation-start":
-        isGenerating = true;
-        updateButtons();
-        generateButton.textContent = "Generating\u2026";
-        if (approvalStatus) {
-          approvalStatus.className = "status";
-          approvalStatus.textContent = "Generating layouts\u2026 select your favourites once they appear.";
+        if (message.data) {
+          renderBrandSummary(message.data);
         }
         break;
-      case "generation-complete":
-        isGenerating = false;
-        generateButton.textContent = "Generate branded templates";
-        updateButtons();
-        setStatus("Templates created. Check your canvas!", "success");
-        if (approvalStatus) {
-          approvalStatus.className = "status";
-          approvalStatus.textContent = "Select the new frames you like and click approve to reinforce the style.";
-        }
+      case "operation-complete":
+        appendRationale(message.action, message.rationale);
+        generateButton.disabled = false;
+        applyBrandButton.disabled = false;
+        if (approveButton) approveButton.disabled = selectionCount === 0;
+        chatApplyButton.disabled = selectionCount === 0;
+        updateStatus(modeStatus, `Last action: ${message.action}`, "success");
         break;
-      case "generation-error":
-        isGenerating = false;
-        generateButton.textContent = "Generate branded templates";
-        updateButtons();
-        setStatus(message.data, "warning");
+      case "operation-error":
+        updateStatus(modeStatus, message.message, "warning");
+        generateButton.disabled = false;
+        applyBrandButton.disabled = false;
         break;
       case "selection-change":
-        selectionCount = message.data;
-        if (!currentProfile) {
-          if (selectionCount > 0) {
-            setStatus(`Selection ready \xB7 ${selectionCount} node${selectionCount > 1 ? "s" : ""} selected.`, "default");
-          } else {
-            setStatus("Select 1\u20135 frames that reflect the brand, then click learn.", "warning");
-          }
-        } else if (approvalStatus) {
-          if (selectionCount > 0) {
-            approvalStatus.className = "status";
-            approvalStatus.textContent = `Selection ready \xB7 ${selectionCount} node${selectionCount > 1 ? "s" : ""} selected. Approve to reinforce the brand.`;
-          } else {
-            approvalStatus.className = "status";
-            approvalStatus.textContent = "Select the frames you trust, then click approve to keep learning.";
-          }
-        }
-        updateButtons();
+        updateSelection(message.count);
         break;
-      case "approval-complete":
-        selectionCount = 0;
-        updateButtons();
-        if (approvalStatus) {
-          approvalStatus.className = "status success";
-          approvalStatus.textContent = "Thanks! Approved selection added to the brand memory.";
-        }
+      case "tutorial-assets":
+        brandInput.value = JSON.stringify(message.sample, null, 2);
+        updateStatus(brandStatus, "Sample brand loaded. Import when ready.", "info");
         break;
-      case "approval-error":
-        if (approvalStatus) {
-          approvalStatus.className = "status warning";
-          approvalStatus.textContent = message.data;
-        }
-        updateButtons();
+      case "chat-preview":
+        updateChatDiff(message.diff);
+        updateStatus(chatStatus, message.rationale.join(" \u2022 "), "info");
+        chatApplyButton.disabled = false;
         break;
-      default:
+      case "chat-applied":
+        updateStatus(chatStatus, message.rationale.join(" \u2022 "), "success");
+        chatApplyButton.disabled = true;
         break;
     }
   };
-  renderPatternToggles();
-  updateButtons();
+  function postToPlugin(message) {
+    parent.postMessage({ pluginMessage: message }, "*");
+  }
+  postToPlugin({ type: "ready" });
+  postToPlugin({ type: "set-mode", mode: currentMode });
 })();
