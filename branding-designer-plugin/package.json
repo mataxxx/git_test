@@ -1,0 +1,21 @@
+{
+  "name": "branding-designer-plugin",
+  "version": "0.1.0",
+  "description": "Figma plugin that learns a brand's visual language and generates high-quality templates in the same style.",
+  "license": "MIT",
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build:main": "esbuild src/main.ts --bundle --platform=node --format=cjs --target=es2018 --outfile=dist/code.js",
+    "build:ui": "esbuild src/ui/ui.ts --bundle --format=iife --target=es6 --outfile=dist/ui.js",
+    "build": "npm run clean && npm run build:main && npm run build:ui",
+    "watch": "npm run clean && concurrently \"npm:watch:main\" \"npm:watch:ui\"",
+    "watch:main": "esbuild src/main.ts --bundle --platform=node --format=cjs --target=es2018 --outfile=dist/code.js --watch",
+    "watch:ui": "esbuild src/ui/ui.ts --bundle --format=iife --target=es6 --outfile=dist/ui.js --watch"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.88.0",
+    "concurrently": "^9.0.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.3"
+  }
+}

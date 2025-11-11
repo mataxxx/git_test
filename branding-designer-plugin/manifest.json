@@ -1,0 +1,16 @@
+{
+  "name": "Brand Style Designer",
+  "id": "com.cursor.brand-style-designer",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "ui.html",
+  "editorType": [
+    "figma"
+  ],
+  "relaunchButtons": [
+    {
+      "command": "open",
+      "name": "Brand Style Designer"
+    }
+  ]
+}

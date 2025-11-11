@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Brand Style Designer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: 'Inter', sans-serif;
+        --bg: #ffffff;
+        --border: #e5e7eb;
+        --accent: #2563eb;
+        --muted: #6b7280;
+        --success: #10b981;
+        --warning: #f59e0b;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: #111827;
+      }
+
+      .app {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 20px 20px 24px;
+        max-height: 600px;
+        min-width: 320px;
+      }
+
+      header h1 {
+        font-size: 16px;
+        font-weight: 600;
+        margin: 0;
+      }
+
+      header p {
+        margin: 4px 0 0;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      section {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      section h2 {
+        font-size: 13px;
+        font-weight: 600;
+        margin: 0;
+      }
+
+      button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        border: none;
+        border-radius: 999px;
+        padding: 10px 16px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.12s ease, box-shadow 0.12s ease;
+      }
+
+      button.primary {
+        background: var(--accent);
+        color: white;
+      }
+
+      button.ghost {
+        background: rgba(37, 99, 235, 0.1);
+        color: var(--accent);
+      }
+
+      button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+
+      button:hover:not(:disabled) {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 24px rgba(37, 99, 235, 0.18);
+      }
+
+      .status {
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(37, 99, 235, 0.08);
+        color: var(--accent);
+      }
+
+      .status.success {
+        background: rgba(16, 185, 129, 0.1);
+        color: var(--success);
+      }
+
+      .status.warning {
+        background: rgba(245, 158, 11, 0.12);
+        color: var(--warning);
+      }
+
+      .palette-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(48px, 1fr));
+        gap: 8px;
+      }
+
+      .swatch {
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 10px;
+        align-items: center;
+      }
+
+      .swatch-color {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        border-radius: 6px;
+        border: 1px solid rgba(17, 24, 39, 0.05);
+      }
+
+      .fonts-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .font-item {
+        border: 1px dashed var(--border);
+        border-radius: 10px;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 11px;
+      }
+
+      .layout-toggles {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 8px;
+      }
+
+      .toggle {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        cursor: pointer;
+        transition: border-color 0.12s ease, background 0.12s ease;
+      }
+
+      .toggle.active {
+        border-color: var(--accent);
+        background: rgba(37, 99, 235, 0.09);
+      }
+
+      .toggle input {
+        appearance: none;
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        border: 2px solid var(--accent);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+      }
+
+      .toggle input:checked::after {
+        content: '';
+        width: 8px;
+        height: 8px;
+        display: block;
+        border-radius: 2px;
+        background: var(--accent);
+      }
+
+      label {
+        font-size: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-weight: 500;
+      }
+
+      input[type='number'] {
+        font-family: inherit;
+        font-size: 12px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+      }
+
+      footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 10px;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <h1>Brand Style Designer</h1>
+        <p>Learn your brand's DNA from a handful of layouts and generate fresh templates that match.</p>
+      </header>
+
+      <section>
+        <h2>1. Learn from examples</h2>
+        <p class="status warning" id="status">
+          Select 1–5 frames that reflect the brand, then click learn.
+        </p>
+        <button class="primary" id="learnButton">Learn from selection</button>
+      </section>
+
+      <section>
+        <h2>2. Brand DNA</h2>
+        <div id="brandSummary">
+          <p class="status">Brand summary will appear here after learning.</p>
+        </div>
+      </section>
+
+      <section>
+        <h2>3. Generate templates</h2>
+        <label>
+          How many templates?
+          <input type="number" id="countInput" value="3" min="1" max="6" />
+        </label>
+        <div class="layout-toggles" id="patternToggleGroup">
+          <!-- Layout toggles injected via script -->
+        </div>
+        <button class="ghost" id="generateButton" disabled>Generate branded templates</button>
+      </section>
+
+      <footer>
+        <span>v0.1.0</span>
+        <span>Crafted for Figma</span>
+      </footer>
+    </div>
+
+    <script src="dist/ui.js"></script>
+  </body>
+</html>
