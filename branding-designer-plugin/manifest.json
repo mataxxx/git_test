@@ -1,0 +1,22 @@
+{
+  "name": "BrandPilot",
+  "id": "com.cursor.brandpilot",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "ui.html",
+  "editorType": [
+    "figma"
+  ],
+  "relaunchButtons": [
+    {
+      "command": "open",
+      "name": "BrandPilot"
+    }
+  ],
+  "menu": [
+    {
+      "name": "BrandPilot",
+      "command": "open"
+    }
+  ]
+}
